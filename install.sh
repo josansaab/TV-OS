@@ -499,34 +499,86 @@ CLOSEEOF
 
 chmod +x "$USER_HOME/.config/nexus-tv/close-app.sh"
 
-# Create xbindkeys configuration for global keyboard shortcuts
-cat > "$USER_HOME/.xbindkeysrc" << XBINDEOF
-# Nexus TV OS Keyboard Shortcuts
-# Press Escape, Home, or Backspace to return to TV interface
+# Create Openbox keybindings (works reliably with fullscreen apps)
+mkdir -p "$USER_HOME/.config/openbox"
+cat > "$USER_HOME/.config/openbox/rc.xml" << 'RCXMLEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <keyboard>
+    <!-- Super/Windows key - return to TV -->
+    <keybind key="Super_L">
+      <action name="Execute">
+        <command>~/.config/nexus-tv/close-app.sh</command>
+      </action>
+    </keybind>
+    <keybind key="Super_R">
+      <action name="Execute">
+        <command>~/.config/nexus-tv/close-app.sh</command>
+      </action>
+    </keybind>
+    <!-- F10 key - return to TV -->
+    <keybind key="F10">
+      <action name="Execute">
+        <command>~/.config/nexus-tv/close-app.sh</command>
+      </action>
+    </keybind>
+    <!-- Home key - return to TV -->
+    <keybind key="XF86HomePage">
+      <action name="Execute">
+        <command>~/.config/nexus-tv/close-app.sh</command>
+      </action>
+    </keybind>
+    <!-- Back button - return to TV -->
+    <keybind key="XF86Back">
+      <action name="Execute">
+        <command>~/.config/nexus-tv/close-app.sh</command>
+      </action>
+    </keybind>
+    <!-- Ctrl+Home - return to TV -->
+    <keybind key="C-Home">
+      <action name="Execute">
+        <command>~/.config/nexus-tv/close-app.sh</command>
+      </action>
+    </keybind>
+    <!-- Alt+Home - return to TV -->
+    <keybind key="A-Home">
+      <action name="Execute">
+        <command>~/.config/nexus-tv/close-app.sh</command>
+      </action>
+    </keybind>
+  </keyboard>
+  <applications>
+    <application class="*">
+      <decor>no</decor>
+    </application>
+  </applications>
+</openbox_config>
+RCXMLEOF
 
-# Escape key - return to TV
-"$USER_HOME/.config/nexus-tv/close-app.sh"
-    Escape
+# Fix the path in rc.xml to use actual home directory
+sed -i "s|~/.config/nexus-tv|$USER_HOME/.config/nexus-tv|g" "$USER_HOME/.config/openbox/rc.xml"
 
-# Home/Super key - return to TV  
-"$USER_HOME/.config/nexus-tv/close-app.sh"
-    XF86HomePage
+# For GNOME desktop sessions, add dconf/gsettings keybindings
+if command -v gsettings &> /dev/null; then
+    log_info "Adding GNOME keyboard shortcuts..."
+    
+    # Create a script that GNOME can call
+    cat > /usr/local/bin/nexus-tv-home << HOMESCRIPT
+#!/bin/bash
+$USER_HOME/.config/nexus-tv/close-app.sh
+HOMESCRIPT
+    chmod +x /usr/local/bin/nexus-tv-home
+    
+    # Set up custom GNOME shortcuts (run as the actual user)
+    su - "$ACTUAL_USER" -c "gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \"['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/nexus-home/']\"" 2>/dev/null || true
+    su - "$ACTUAL_USER" -c "gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/nexus-home/ name 'Nexus TV Home'" 2>/dev/null || true
+    su - "$ACTUAL_USER" -c "gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/nexus-home/ command '/usr/local/bin/nexus-tv-home'" 2>/dev/null || true
+    su - "$ACTUAL_USER" -c "gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/nexus-home/ binding 'F10'" 2>/dev/null || true
+fi
 
-# Browser Back button (on remotes/keyboards)
-"$USER_HOME/.config/nexus-tv/close-app.sh"
-    XF86Back
+chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config/openbox"
 
-# Backspace as backup
-"$USER_HOME/.config/nexus-tv/close-app.sh"
-    BackSpace
-XBINDEOF
-
-chown "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.xbindkeysrc"
-
-# Add xbindkeys to the kiosk startup script
-sed -i '/^xset s off/a xbindkeys 2>/dev/null \&' "$USER_HOME/.config/nexus-tv/start-kiosk.sh"
-
-log_ok "Keyboard shortcuts configured (Escape/Home/Backspace to exit apps)"
+log_ok "Keyboard shortcuts configured (Super/Windows key, F10, or Home button to exit apps)"
 
 # ============================================
 # CREATE CLI CONTROL COMMAND
@@ -617,9 +669,9 @@ case "\$1" in
         echo "  launch <app>    - Launch an app (plex, kodi, netflix, etc.)"
         echo ""
         echo "Keyboard shortcuts (while in kiosk mode):"
-        echo "  ESCAPE          - Return to TV interface"
-        echo "  BACKSPACE       - Return to TV interface"
-        echo "  HOME            - Return to TV interface"
+        echo "  SUPER/WINDOWS   - Return to TV interface"
+        echo "  F10             - Return to TV interface"
+        echo "  HOME button     - Return to TV interface"
         ;;
 esac
 CLIEOF
@@ -660,7 +712,7 @@ echo "  3. Open kiosk mode: nexus-tv kiosk"
 echo "  4. Launch apps: nexus-tv launch kodi"
 echo ""
 echo "EXIT FROM APPS:"
-echo "  Press ESCAPE, BACKSPACE, or HOME key to return to TV interface"
+echo "  Press SUPER/WINDOWS key or F10 to return to TV interface"
 echo "  These keys work globally while any app is running"
 echo ""
 echo "The TV OS now runs as YOUR user, so it can launch"

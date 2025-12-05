@@ -55,8 +55,7 @@ apt-get install -y -qq \
     firefox \
     wmctrl \
     xdotool \
-    triggerhappy \
-    inputexec
+    triggerhappy
 
 log_ok "System dependencies installed"
 

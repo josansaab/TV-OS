@@ -53,9 +53,10 @@ apt-get install -y -qq \
     software-properties-common \
     gnupg \
     firefox \
-    xbindkeys \
     wmctrl \
-    xdotool
+    xdotool \
+    triggerhappy \
+    inputexec
 
 log_ok "System dependencies installed"
 
@@ -466,6 +467,8 @@ cat > "$USER_HOME/.config/nexus-tv/close-app.sh" << 'CLOSEEOF'
 #!/bin/bash
 # Close active app and return to Nexus TV OS
 
+export DISPLAY=:0
+
 NEXUS_PORT="${NEXUS_PORT:-5000}"
 
 # Get active app info from the backend
@@ -480,105 +483,114 @@ if echo "$ACTIVE" | grep -q '"active":true'; then
     fi
 fi
 
-# Kill any kiosk browser windows (backup method)
-pkill -f "chromium.*--kiosk" 2>/dev/null || true
-pkill -f "chromium-browser.*--kiosk" 2>/dev/null || true
-pkill -f "firefox.*--kiosk" 2>/dev/null || true
-pkill -f "google-chrome.*--kiosk" 2>/dev/null || true
+# Kill any kiosk browser windows (backup method) - but NOT the main TV OS browser
+# Get the TV OS browser PID to exclude it
+TV_BROWSER_PID=$(pgrep -f "app=http://localhost:5000" | head -1)
+
+# Kill kiosk browsers for streaming apps
+for pid in $(pgrep -f "chromium.*--kiosk"); do
+    if [ "$pid" != "$TV_BROWSER_PID" ]; then
+        kill "$pid" 2>/dev/null || true
+    fi
+done
+
+for pid in $(pgrep -f "chromium-browser.*--kiosk"); do
+    if [ "$pid" != "$TV_BROWSER_PID" ]; then
+        kill "$pid" 2>/dev/null || true
+    fi
+done
+
+for pid in $(pgrep -f "firefox.*--kiosk"); do
+    if [ "$pid" != "$TV_BROWSER_PID" ]; then
+        kill "$pid" 2>/dev/null || true
+    fi
+done
+
+for pid in $(pgrep -f "google-chrome.*--kiosk"); do
+    if [ "$pid" != "$TV_BROWSER_PID" ]; then
+        kill "$pid" 2>/dev/null || true
+    fi
+done
 
 # Kill native apps that might be running fullscreen
-pkill -f "kodi" 2>/dev/null || true
-pkill -f "spotify" 2>/dev/null || true
-pkill -f "vlc" 2>/dev/null || true
+pkill -f "^kodi" 2>/dev/null || true
+pkill -f "spotify --" 2>/dev/null || true
+pkill -f "^vlc" 2>/dev/null || true
 pkill -f "freetube" 2>/dev/null || true
 
 # Small delay then bring TV OS window back to focus
 sleep 0.3
-wmctrl -a "Nexus TV" 2>/dev/null || wmctrl -a "localhost:5000" 2>/dev/null || true
+wmctrl -a "Nexus TV" 2>/dev/null || wmctrl -a "localhost:5000" 2>/dev/null || wmctrl -a "Chromium" 2>/dev/null || true
 CLOSEEOF
 
 chmod +x "$USER_HOME/.config/nexus-tv/close-app.sh"
 
-# Create Openbox keybindings (works reliably with fullscreen apps)
-mkdir -p "$USER_HOME/.config/openbox"
-cat > "$USER_HOME/.config/openbox/rc.xml" << 'RCXMLEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<openbox_config xmlns="http://openbox.org/3.4/rc">
-  <keyboard>
-    <!-- Super/Windows key - return to TV -->
-    <keybind key="Super_L">
-      <action name="Execute">
-        <command>~/.config/nexus-tv/close-app.sh</command>
-      </action>
-    </keybind>
-    <keybind key="Super_R">
-      <action name="Execute">
-        <command>~/.config/nexus-tv/close-app.sh</command>
-      </action>
-    </keybind>
-    <!-- F10 key - return to TV -->
-    <keybind key="F10">
-      <action name="Execute">
-        <command>~/.config/nexus-tv/close-app.sh</command>
-      </action>
-    </keybind>
-    <!-- Home key - return to TV -->
-    <keybind key="XF86HomePage">
-      <action name="Execute">
-        <command>~/.config/nexus-tv/close-app.sh</command>
-      </action>
-    </keybind>
-    <!-- Back button - return to TV -->
-    <keybind key="XF86Back">
-      <action name="Execute">
-        <command>~/.config/nexus-tv/close-app.sh</command>
-      </action>
-    </keybind>
-    <!-- Ctrl+Home - return to TV -->
-    <keybind key="C-Home">
-      <action name="Execute">
-        <command>~/.config/nexus-tv/close-app.sh</command>
-      </action>
-    </keybind>
-    <!-- Alt+Home - return to TV -->
-    <keybind key="A-Home">
-      <action name="Execute">
-        <command>~/.config/nexus-tv/close-app.sh</command>
-      </action>
-    </keybind>
-  </keyboard>
-  <applications>
-    <application class="*">
-      <decor>no</decor>
-    </application>
-  </applications>
-</openbox_config>
-RCXMLEOF
-
-# Fix the path in rc.xml to use actual home directory
-sed -i "s|~/.config/nexus-tv|$USER_HOME/.config/nexus-tv|g" "$USER_HOME/.config/openbox/rc.xml"
-
-# For GNOME desktop sessions, add dconf/gsettings keybindings
-if command -v gsettings &> /dev/null; then
-    log_info "Adding GNOME keyboard shortcuts..."
-    
-    # Create a script that GNOME can call
-    cat > /usr/local/bin/nexus-tv-home << HOMESCRIPT
+# Create a system-level close script that can be called by triggerhappy
+cat > /usr/local/bin/nexus-tv-home << HOMESCRIPT
 #!/bin/bash
-$USER_HOME/.config/nexus-tv/close-app.sh
+# This runs as root from triggerhappy, so we need to run as the actual user
+NEXUS_USER="$ACTUAL_USER"
+su - "\$NEXUS_USER" -c "DISPLAY=:0 $USER_HOME/.config/nexus-tv/close-app.sh" 2>/dev/null || $USER_HOME/.config/nexus-tv/close-app.sh
 HOMESCRIPT
-    chmod +x /usr/local/bin/nexus-tv-home
-    
-    # Set up custom GNOME shortcuts (run as the actual user)
-    su - "$ACTUAL_USER" -c "gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \"['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/nexus-home/']\"" 2>/dev/null || true
-    su - "$ACTUAL_USER" -c "gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/nexus-home/ name 'Nexus TV Home'" 2>/dev/null || true
-    su - "$ACTUAL_USER" -c "gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/nexus-home/ command '/usr/local/bin/nexus-tv-home'" 2>/dev/null || true
-    su - "$ACTUAL_USER" -c "gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/nexus-home/ binding 'F10'" 2>/dev/null || true
-fi
+chmod +x /usr/local/bin/nexus-tv-home
 
-chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config/openbox"
+# Set up triggerhappy for hardware-level key capture (works with remotes!)
+log_info "Configuring hardware key capture for remotes..."
 
-log_ok "Keyboard shortcuts configured (Super/Windows key, F10, or Home button to exit apps)"
+mkdir -p /etc/triggerhappy/triggers.d
+
+# Create triggerhappy config for various remote/keyboard buttons
+cat > /etc/triggerhappy/triggers.d/nexus-tv.conf << 'THEOF'
+# Nexus TV OS - Return to TV interface triggers
+# These capture keys at the hardware/input level - works with any remote!
+
+# Home button (common on remotes)
+KEY_HOMEPAGE    1       /usr/local/bin/nexus-tv-home
+
+# Back button (common on remotes)  
+KEY_BACK        1       /usr/local/bin/nexus-tv-home
+
+# Exit button (some remotes have this)
+KEY_EXIT        1       /usr/local/bin/nexus-tv-home
+
+# Menu button as alternative
+KEY_MENU        1       /usr/local/bin/nexus-tv-home
+
+# F10 key (keyboard)
+KEY_F10         1       /usr/local/bin/nexus-tv-home
+
+# Red button on media remotes (commonly used for exit)
+KEY_RED         1       /usr/local/bin/nexus-tv-home
+
+# Stop button on media remotes
+KEY_STOP        1       /usr/local/bin/nexus-tv-home
+
+# Close/Cancel
+KEY_CLOSE       1       /usr/local/bin/nexus-tv-home
+KEY_CANCEL      1       /usr/local/bin/nexus-tv-home
+THEOF
+
+# Enable and start triggerhappy service
+systemctl enable triggerhappy 2>/dev/null || true
+systemctl restart triggerhappy 2>/dev/null || true
+
+# Also add udev rule to ensure triggerhappy can access input devices
+cat > /etc/udev/rules.d/99-nexus-tv-input.rules << 'UDEVEOF'
+# Allow triggerhappy to access all input devices for remote control support
+SUBSYSTEM=="input", GROUP="input", MODE="0660"
+KERNEL=="event*", GROUP="input", MODE="0660"
+UDEVEOF
+
+# Add user to input group
+usermod -a -G input "$ACTUAL_USER" 2>/dev/null || true
+
+# Reload udev rules
+udevadm control --reload-rules 2>/dev/null || true
+udevadm trigger 2>/dev/null || true
+
+chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config/nexus-tv"
+
+log_ok "Hardware key capture configured (Home, Back, Menu, F10, Stop, or Red button to exit apps)"
 
 # ============================================
 # CREATE CLI CONTROL COMMAND
@@ -668,10 +680,13 @@ case "\$1" in
         echo "  kiosk           - Start in fullscreen kiosk mode"
         echo "  launch <app>    - Launch an app (plex, kodi, netflix, etc.)"
         echo ""
-        echo "Keyboard shortcuts (while in kiosk mode):"
-        echo "  SUPER/WINDOWS   - Return to TV interface"
-        echo "  F10             - Return to TV interface"
+        echo "Keyboard/Remote shortcuts (exit apps and return to TV):"
         echo "  HOME button     - Return to TV interface"
+        echo "  BACK button     - Return to TV interface"
+        echo "  MENU button     - Return to TV interface"
+        echo "  F10 key         - Return to TV interface"
+        echo "  RED button      - Return to TV interface"
+        echo "  STOP button     - Return to TV interface"
         ;;
 esac
 CLIEOF
@@ -711,9 +726,13 @@ echo "  2. Start TV OS: nexus-tv start"
 echo "  3. Open kiosk mode: nexus-tv kiosk"
 echo "  4. Launch apps: nexus-tv launch kodi"
 echo ""
-echo "EXIT FROM APPS:"
-echo "  Press SUPER/WINDOWS key or F10 to return to TV interface"
-echo "  These keys work globally while any app is running"
+echo "EXIT FROM APPS (works with any remote or keyboard):"
+echo "  HOME button  - Return to TV interface"
+echo "  BACK button  - Return to TV interface"  
+echo "  MENU button  - Return to TV interface"
+echo "  F10 key      - Return to TV interface"
+echo "  RED button   - Return to TV interface (media remotes)"
+echo "  STOP button  - Return to TV interface"
 echo ""
 echo "The TV OS now runs as YOUR user, so it can launch"
 echo "native apps like Kodi directly from the interface!"

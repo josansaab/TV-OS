@@ -53,12 +53,27 @@ apt-get install -y \
     software-properties-common \
     gnupg
 
+# Ensure snapd is fully initialized
+echo -e "${YELLOW}📦 Initializing Snap...${NC}"
+systemctl enable snapd.socket 2>/dev/null || true
+systemctl start snapd.socket 2>/dev/null || true
+systemctl enable snapd.service 2>/dev/null || true
+systemctl start snapd.service 2>/dev/null || true
+ln -sf /var/lib/snapd/snap /snap 2>/dev/null || true
+sleep 3
+
 # Install Chromium via Snap (Ubuntu 22.04+ default)
-echo -e "${YELLOW}📦 Installing Chromium browser via Snap...${NC}"
-snap install chromium 2>/dev/null || {
-    echo -e "${YELLOW}Snap chromium failed, trying apt...${NC}"
-    apt-get install -y chromium-browser 2>/dev/null || apt-get install -y chromium 2>/dev/null || true
-}
+echo -e "${YELLOW}📦 Installing Chromium browser...${NC}"
+if [ -x "/snap/bin/chromium" ] || command -v chromium &> /dev/null; then
+    echo -e "${GREEN}  ✅ Chromium already installed${NC}"
+else
+    snap install chromium 2>/dev/null || {
+        echo -e "${YELLOW}  Snap failed, trying Flatpak...${NC}"
+        flatpak install -y --noninteractive flathub org.chromium.Chromium 2>/dev/null || {
+            echo -e "${YELLOW}  ⚠️ Chromium installation failed, will try alternatives${NC}"
+        }
+    }
+fi
 
 # Add Flathub repository
 echo -e "${YELLOW}📦 Adding Flathub repository...${NC}"
@@ -92,51 +107,66 @@ else
         add-apt-repository -y ppa:team-xbmc/ppa 2>/dev/null || true
         apt-get update -y
     fi
-    apt-get install -y kodi || echo -e "${RED}  ⚠️ Kodi installation failed, skipping${NC}"
+    apt-get install -y kodi 2>/dev/null || echo -e "${YELLOW}  ⚠️ Kodi installation failed, skipping${NC}"
     echo -e "${GREEN}  ✅ Kodi done${NC}"
 fi
 
 # --- PLEX MEDIA SERVER ---
-if command -v plexmediaserver &> /dev/null || systemctl is-active --quiet plexmediaserver 2>/dev/null; then
+if [ -f "/usr/lib/plexmediaserver/Plex Media Server" ] || dpkg -l plexmediaserver 2>/dev/null | grep -q "^ii"; then
     echo -e "${GREEN}  ✅ Plex already installed, skipping${NC}"
 else
     echo -e "${YELLOW}  Installing Plex Media Server...${NC}"
-    curl -fsSL https://downloads.plex.tv/plex-keys/PlexSign.key | gpg --dearmor -o /usr/share/keyrings/plex-archive-keyring.gpg 2>/dev/null || true
-    echo "deb [signed-by=/usr/share/keyrings/plex-archive-keyring.gpg] https://downloads.plex.tv/repo/deb public main" > /etc/apt/sources.list.d/plexmediaserver.list || true
-    apt-get update -y
-    apt-get install -y plexmediaserver || echo -e "${RED}  ⚠️ Plex installation failed, skipping${NC}"
+    curl -fsSL https://downloads.plex.tv/plex-keys/PlexSign.key 2>/dev/null | gpg --batch --yes --dearmor -o /usr/share/keyrings/plex-archive-keyring.gpg 2>/dev/null || true
+    echo "deb [signed-by=/usr/share/keyrings/plex-archive-keyring.gpg] https://downloads.plex.tv/repo/deb public main" > /etc/apt/sources.list.d/plexmediaserver.list 2>/dev/null || true
+    apt-get update -y 2>/dev/null
+    apt-get install -y plexmediaserver 2>/dev/null || echo -e "${YELLOW}  ⚠️ Plex installation failed, skipping${NC}"
     systemctl enable plexmediaserver 2>/dev/null || true
     systemctl start plexmediaserver 2>/dev/null || true
     echo -e "${GREEN}  ✅ Plex done${NC}"
 fi
 
-# --- SPOTIFY ---
-echo -e "${YELLOW}  Installing Spotify...${NC}"
-if command -v spotify &> /dev/null; then
-    echo -e "${GREEN}  ✅ Spotify already installed${NC}"
+# --- SPOTIFY (via apt with official repo - more reliable than snap) ---
+if command -v spotify &> /dev/null || snap list spotify 2>/dev/null | grep -q spotify; then
+    echo -e "${GREEN}  ✅ Spotify already installed, skipping${NC}"
 else
-    snap install spotify 2>/dev/null || flatpak install -y flathub com.spotify.Client 2>/dev/null || echo -e "${RED}  ⚠️ Spotify installation failed, skipping${NC}"
+    echo -e "${YELLOW}  Installing Spotify...${NC}"
+    # Try official Spotify apt repo first (most reliable, no interaction)
+    curl -fsSL https://download.spotify.com/debian/pubkey_6224F9941A8AA6D1.gpg 2>/dev/null | gpg --batch --yes --dearmor -o /usr/share/keyrings/spotify-archive-keyring.gpg 2>/dev/null || true
+    echo "deb [signed-by=/usr/share/keyrings/spotify-archive-keyring.gpg] http://repository.spotify.com stable non-free" > /etc/apt/sources.list.d/spotify.list 2>/dev/null || true
+    apt-get update -y 2>/dev/null
+    apt-get install -y spotify-client 2>/dev/null || {
+        echo -e "${YELLOW}  APT failed, trying Flatpak...${NC}"
+        flatpak install -y --noninteractive flathub com.spotify.Client 2>/dev/null || echo -e "${YELLOW}  ⚠️ Spotify installation failed, will use web version${NC}"
+    }
     echo -e "${GREEN}  ✅ Spotify done${NC}"
 fi
 
 # --- FREETUBE ---
-echo -e "${YELLOW}  Installing FreeTube...${NC}"
-flatpak install -y flathub io.freetubeapp.FreeTube 2>/dev/null || echo -e "${RED}  ⚠️ FreeTube installation failed, skipping${NC}"
-echo -e "${GREEN}  ✅ FreeTube done${NC}"
-
-# --- VACUUMTUBE ---
-echo -e "${YELLOW}  Installing VacuumTube...${NC}"
-flatpak install -y flathub rocks.shy.VacuumTube 2>/dev/null || echo -e "${YELLOW}  ⚠️ VacuumTube not available via flatpak, skipping${NC}"
-echo -e "${GREEN}  ✅ VacuumTube done${NC}"
+if flatpak list 2>/dev/null | grep -q "FreeTube"; then
+    echo -e "${GREEN}  ✅ FreeTube already installed, skipping${NC}"
+else
+    echo -e "${YELLOW}  Installing FreeTube...${NC}"
+    flatpak install -y --noninteractive flathub io.freetubeapp.FreeTube 2>/dev/null || echo -e "${YELLOW}  ⚠️ FreeTube installation failed, skipping${NC}"
+    echo -e "${GREEN}  ✅ FreeTube done${NC}"
+fi
 
 # --- VLC ---
 if command -v vlc &> /dev/null; then
     echo -e "${GREEN}  ✅ VLC already installed, skipping${NC}"
 else
     echo -e "${YELLOW}  Installing VLC Media Player...${NC}"
-    apt-get install -y vlc || echo -e "${RED}  ⚠️ VLC installation failed, skipping${NC}"
+    apt-get install -y vlc 2>/dev/null || echo -e "${YELLOW}  ⚠️ VLC installation failed, skipping${NC}"
     echo -e "${GREEN}  ✅ VLC done${NC}"
 fi
+
+# --- MPV (lightweight alternative player) ---
+if ! command -v mpv &> /dev/null; then
+    echo -e "${YELLOW}  Installing MPV Player...${NC}"
+    apt-get install -y mpv 2>/dev/null || true
+    echo -e "${GREEN}  ✅ MPV done${NC}"
+fi
+
+echo -e "${GREEN}✅ Media applications installed${NC}"
 
 # ============================================
 # INSTALL NEXUS TV OS
@@ -207,17 +237,25 @@ EOF
 echo -e "${YELLOW}📱 Creating web app shortcuts...${NC}"
 
 APPS_DIR="/usr/share/applications"
-# Detect Chromium path (Snap version takes priority on Ubuntu 22.04+)
+# Detect browser path (Snap Chromium > apt chromium > Firefox as fallback)
 if [ -x "/snap/bin/chromium" ]; then
-    CHROMIUM_CMD="/snap/bin/chromium"
+    BROWSER_CMD="/snap/bin/chromium"
 elif command -v chromium &> /dev/null; then
-    CHROMIUM_CMD=$(command -v chromium)
+    BROWSER_CMD=$(command -v chromium)
 elif command -v chromium-browser &> /dev/null; then
-    CHROMIUM_CMD=$(command -v chromium-browser)
+    BROWSER_CMD=$(command -v chromium-browser)
+elif [ -x "/snap/bin/firefox" ]; then
+    BROWSER_CMD="/snap/bin/firefox"
+elif command -v firefox &> /dev/null; then
+    BROWSER_CMD=$(command -v firefox)
+    # Install Firefox as fallback if no browser found
 else
-    CHROMIUM_CMD="/snap/bin/chromium"
+    echo -e "${YELLOW}  Installing Firefox as fallback browser...${NC}"
+    apt-get install -y firefox 2>/dev/null || snap install firefox 2>/dev/null || true
+    BROWSER_CMD=$(command -v firefox || echo "/snap/bin/firefox")
 fi
-echo -e "${BLUE}Using Chromium at: $CHROMIUM_CMD${NC}"
+echo -e "${BLUE}Using browser at: $BROWSER_CMD${NC}"
+CHROMIUM_CMD="$BROWSER_CMD"
 
 cat > "$APPS_DIR/nexus-netflix.desktop" << EOF
 [Desktop Entry]

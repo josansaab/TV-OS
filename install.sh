@@ -303,71 +303,112 @@ log_ok "Web app shortcuts created"
 
 log_info "Configuring auto-login and kiosk mode..."
 
-# Set LightDM as the default display manager (Ubuntu 22.04 uses gdm3 by default)
-log_info "Setting LightDM as default display manager..."
+# Create Openbox session file if it doesn't exist
+log_info "Creating Openbox session..."
+mkdir -p /usr/share/xsessions
+cat > /usr/share/xsessions/openbox.desktop << SESSIONEOF
+[Desktop Entry]
+Name=Openbox
+Comment=Log in using the Openbox window manager
+Exec=/usr/bin/openbox-session
+TryExec=/usr/bin/openbox-session
+Type=Application
+SESSIONEOF
 
-# Stop and disable gdm3 if running
-systemctl stop gdm3 2>/dev/null || true
-systemctl disable gdm3 2>/dev/null || true
+# Detect which display manager is installed and configure accordingly
+if systemctl is-enabled gdm3 2>/dev/null || [ -f "/etc/gdm3/custom.conf" ]; then
+    # Ubuntu Desktop with GDM3 - configure gdm3 for autologin
+    log_info "Configuring GDM3 for autologin..."
+    
+    # Backup existing config
+    cp /etc/gdm3/custom.conf /etc/gdm3/custom.conf.backup 2>/dev/null || true
+    
+    cat > /etc/gdm3/custom.conf << GDMEOF
+[daemon]
+AutomaticLoginEnable=true
+AutomaticLogin=$ACTUAL_USER
 
-# Configure LightDM as default display manager
-echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
+[security]
 
-# Use debconf to set LightDM as default (non-interactive)
-echo "lightdm shared/default-x-display-manager select lightdm" | debconf-set-selections 2>/dev/null || true
-DEBIAN_FRONTEND=noninteractive dpkg-reconfigure lightdm 2>/dev/null || true
+[xdmcp]
 
-# Enable and start LightDM
-systemctl enable lightdm 2>/dev/null || true
+[chooser]
 
-# Set graphical target as default boot target
-log_info "Setting graphical boot target..."
-systemctl set-default graphical.target
+[debug]
+GDMEOF
 
-# Create LightDM autologin configuration
-mkdir -p /etc/lightdm/lightdm.conf.d/
-cat > /etc/lightdm/lightdm.conf.d/50-nexus-tv.conf << LIGHTDMEOF
+    log_ok "GDM3 autologin configured"
+    
+elif systemctl is-enabled lightdm 2>/dev/null || [ -f "/etc/lightdm/lightdm.conf" ]; then
+    # LightDM is installed - configure it
+    log_info "Configuring LightDM for autologin..."
+    
+    mkdir -p /etc/lightdm/lightdm.conf.d/
+    cat > /etc/lightdm/lightdm.conf.d/50-nexus-tv.conf << LIGHTDMEOF
 [Seat:*]
 autologin-user=$ACTUAL_USER
 autologin-user-timeout=0
 user-session=openbox
-autologin-session=openbox
+LIGHTDMEOF
+
+    groupadd -f autologin 2>/dev/null || true
+    usermod -a -G autologin "$ACTUAL_USER" 2>/dev/null || true
+    
+    log_ok "LightDM autologin configured"
+    
+else
+    # No display manager - install lightdm with greeter
+    log_info "Installing LightDM display manager..."
+    apt-get install -y -qq lightdm lightdm-gtk-greeter 2>/dev/null || true
+    
+    mkdir -p /etc/lightdm/lightdm.conf.d/
+    cat > /etc/lightdm/lightdm.conf.d/50-nexus-tv.conf << LIGHTDMEOF
+[Seat:*]
+autologin-user=$ACTUAL_USER
+autologin-user-timeout=0
+user-session=openbox
 greeter-session=lightdm-gtk-greeter
 LIGHTDMEOF
 
-# Also create main lightdm.conf for autologin
-cat > /etc/lightdm/lightdm.conf << LIGHTDMMAINEOF
-[Seat:*]
-autologin-user=$ACTUAL_USER
-autologin-user-timeout=0
-user-session=openbox
-autologin-session=openbox
-LIGHTDMMAINEOF
+    groupadd -f autologin 2>/dev/null || true
+    usermod -a -G autologin "$ACTUAL_USER" 2>/dev/null || true
+    systemctl enable lightdm 2>/dev/null || true
+    systemctl set-default graphical.target
+    
+    log_ok "LightDM installed and configured"
+fi
 
-# Add user to autologin group
-groupadd -f autologin 2>/dev/null || true
-usermod -a -G autologin "$ACTUAL_USER" 2>/dev/null || true
+# Create user autostart for GNOME/GDM session (runs after login)
+mkdir -p "$USER_HOME/.config/autostart"
+cat > "$USER_HOME/.config/autostart/nexus-tv-kiosk.desktop" << AUTOSTARTEOF
+[Desktop Entry]
+Type=Application
+Name=Nexus TV Kiosk
+Exec=$USER_HOME/.config/nexus-tv/start-kiosk.sh
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3
+AUTOSTARTEOF
 
-log_ok "LightDM configured"
-
-# Create Openbox autostart script
-mkdir -p "$USER_HOME/.config/openbox"
-cat > "$USER_HOME/.config/openbox/autostart" << AUTOEOF
+# Create the kiosk startup script
+mkdir -p "$USER_HOME/.config/nexus-tv"
+cat > "$USER_HOME/.config/nexus-tv/start-kiosk.sh" << KIOSKEOF
 #!/bin/bash
 
 # Disable screen saver and power management
-xset s off &
-xset -dpms &
-xset s noblank &
+xset s off 2>/dev/null || true
+xset -dpms 2>/dev/null || true
+xset s noblank 2>/dev/null || true
 
-# Hide cursor after 0.5 seconds of inactivity
-unclutter -idle 0.5 -root &
+# Hide cursor after inactivity
+unclutter -idle 0.5 -root 2>/dev/null &
 
 # Start the Nexus TV backend service
-sudo systemctl start nexus-tv &
+sudo systemctl start nexus-tv 2>/dev/null &
 
 # Wait for backend to be ready
-sleep 8
+sleep 5
 
 # Start browser in fullscreen kiosk mode
 $BROWSER_CMD \
@@ -377,16 +418,28 @@ $BROWSER_CMD \
   --no-first-run \
   --disable-session-crashed-bubble \
   --disable-features=TranslateUI \
-  --check-for-update-interval=31536000 \
+  --start-fullscreen \
   --app=http://localhost:5000 &
-AUTOEOF
+KIOSKEOF
+
+chmod +x "$USER_HOME/.config/nexus-tv/start-kiosk.sh"
+
+# Also create Openbox autostart for Openbox sessions
+mkdir -p "$USER_HOME/.config/openbox"
+cat > "$USER_HOME/.config/openbox/autostart" << OPENBOXEOF
+#!/bin/bash
+$USER_HOME/.config/nexus-tv/start-kiosk.sh &
+OPENBOXEOF
 
 chmod +x "$USER_HOME/.config/openbox/autostart"
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config"
 
-# Allow the user to run systemctl start nexus-tv without password
-echo "$ACTUAL_USER ALL=(ALL) NOPASSWD: /bin/systemctl start nexus-tv, /bin/systemctl stop nexus-tv, /bin/systemctl restart nexus-tv" > /etc/sudoers.d/nexus-tv
+# Allow the user to run systemctl commands without password
+echo "$ACTUAL_USER ALL=(ALL) NOPASSWD: /bin/systemctl start nexus-tv, /bin/systemctl stop nexus-tv, /bin/systemctl restart nexus-tv, /bin/systemctl status nexus-tv" > /etc/sudoers.d/nexus-tv
 chmod 440 /etc/sudoers.d/nexus-tv
+
+# Enable nexus-tv service to start on boot
+systemctl enable nexus-tv 2>/dev/null || true
 
 log_ok "Kiosk mode configured"
 

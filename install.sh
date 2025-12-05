@@ -88,9 +88,8 @@ echo -e "${BLUE}📺 Installing Media Applications...${NC}"
 echo ""
 
 # --- KODI ---
-echo -e "${YELLOW}  Installing Kodi...${NC}"
-add-apt-repository -y ppa:team-xbmc/ppa || true
-apt-get update -y
+echo -e "${YELLOW}  Installing Kodi from Ubuntu repository...${NC}"
+# Note: PPA doesn't support Ubuntu 24.04 yet, using official repo
 apt-get install -y kodi || echo -e "${RED}  ⚠️ Kodi installation failed, skipping${NC}"
 echo -e "${GREEN}  ✅ Kodi done${NC}"
 

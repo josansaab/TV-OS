@@ -1,24 +1,56 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { exec } from "child_process";
+import { exec, execSync } from "child_process";
 import { promisify } from "util";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { storage } from "./storage";
 
 const execAsync = promisify(exec);
 
+// Detect the correct browser command
+function detectBrowser(): string {
+  const browsers = [
+    "/snap/bin/chromium",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/snap/bin/firefox",
+    "/usr/bin/firefox",
+  ];
+  
+  for (const browser of browsers) {
+    if (existsSync(browser)) {
+      console.log(`[Browser] Using: ${browser}`);
+      return browser;
+    }
+  }
+  
+  // Try which command as fallback
+  try {
+    const result = execSync("which chromium chromium-browser firefox 2>/dev/null | head -1", { encoding: "utf-8" }).trim();
+    if (result) {
+      console.log(`[Browser] Found via which: ${result}`);
+      return result;
+    }
+  } catch (e) {}
+  
+  console.log("[Browser] Fallback to firefox");
+  return "firefox";
+}
+
+const BROWSER = detectBrowser();
+
 const APP_COMMANDS: Record<string, string> = {
-  plex: "chromium-browser --app=http://localhost:32400/web --start-fullscreen",
+  plex: `${BROWSER} --kiosk --app=http://localhost:32400/web`,
   kodi: "kodi",
-  netflix: "chromium-browser --app=https://www.netflix.com/browse --start-fullscreen",
-  prime: "chromium-browser --app=https://www.primevideo.com --start-fullscreen",
-  spotify: "spotify || flatpak run com.spotify.Client",
-  youtube: "chromium-browser --app=https://www.youtube.com/tv --start-fullscreen",
+  netflix: `${BROWSER} --kiosk --app=https://www.netflix.com/browse`,
+  prime: `${BROWSER} --kiosk --app=https://www.primevideo.com`,
+  spotify: "spotify || flatpak run com.spotify.Client || " + `${BROWSER} --kiosk --app=https://open.spotify.com`,
+  youtube: `${BROWSER} --kiosk --app=https://www.youtube.com/tv`,
   freetube: "flatpak run io.freetubeapp.FreeTube",
-  vacuumtube: "flatpak run rocks.shy.VacuumTube || /usr/local/bin/vacuumtube",
-  kayo: "chromium-browser --app=https://kayosports.com.au --start-fullscreen",
-  chaupal: "chromium-browser --app=https://chaupal.tv --start-fullscreen",
+  vacuumtube: "flatpak run rocks.shy.VacuumTube",
+  kayo: `${BROWSER} --kiosk --app=https://kayosports.com.au`,
+  chaupal: `${BROWSER} --kiosk --app=https://chaupal.tv`,
 };
 
 export async function registerRoutes(

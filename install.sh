@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Nexus TV OS Installer for Ubuntu 24.04+
+# Nexus TV OS Installer for Ubuntu 22.04+
 # Install with: curl -sL https://raw.githubusercontent.com/josansaab/TV-OS/main/install.sh | sudo bash
 
 set -e
@@ -23,6 +23,10 @@ if [ "$EUID" -ne 0 ]; then
    echo -e "${RED}❌ Please run as root (use sudo)${NC}"
    exit 1
 fi
+
+# Detect Ubuntu version
+UBUNTU_VERSION=$(lsb_release -rs 2>/dev/null || echo "22.04")
+echo -e "${BLUE}Detected Ubuntu version: $UBUNTU_VERSION${NC}"
 
 # Get the actual user who invoked sudo
 ACTUAL_USER="${SUDO_USER:-$USER}"
@@ -48,6 +52,7 @@ apt-get install -y \
     flatpak \
     snapd \
     software-properties-common \
+    gnupg \
     || {
         echo -e "${YELLOW}Trying alternative packages...${NC}"
         apt-get install -y \
@@ -62,7 +67,8 @@ apt-get install -y \
             pulseaudio \
             flatpak \
             snapd \
-            software-properties-common
+            software-properties-common \
+            gnupg
     }
 
 # Add Flathub repository
@@ -91,25 +97,38 @@ echo ""
 if command -v kodi &> /dev/null; then
     echo -e "${GREEN}  ✅ Kodi already installed, skipping${NC}"
 else
-    echo -e "${YELLOW}  Installing Kodi from Ubuntu repository...${NC}"
+    echo -e "${YELLOW}  Installing Kodi...${NC}"
+    # Use PPA for Ubuntu 22.04, direct repo for 24.04+
+    if [[ "$UBUNTU_VERSION" == "22.04"* ]] || [[ "$UBUNTU_VERSION" == "20.04"* ]]; then
+        add-apt-repository -y ppa:team-xbmc/ppa 2>/dev/null || true
+        apt-get update -y
+    fi
     apt-get install -y kodi || echo -e "${RED}  ⚠️ Kodi installation failed, skipping${NC}"
     echo -e "${GREEN}  ✅ Kodi done${NC}"
 fi
 
 # --- PLEX MEDIA SERVER ---
-echo -e "${YELLOW}  Installing Plex Media Server...${NC}"
-curl https://downloads.plex.tv/plex-keys/PlexSign.key | gpg --dearmor -o /usr/share/keyrings/plex-archive-keyring.gpg || true
-echo "deb [signed-by=/usr/share/keyrings/plex-archive-keyring.gpg] https://downloads.plex.tv/repo/deb public main" > /etc/apt/sources.list.d/plexmediaserver.list || true
-apt-get update -y
-apt-get install -y plexmediaserver || echo -e "${RED}  ⚠️ Plex installation failed, skipping${NC}"
-systemctl enable plexmediaserver 2>/dev/null || true
-systemctl start plexmediaserver 2>/dev/null || true
-echo -e "${GREEN}  ✅ Plex done${NC}"
+if command -v plexmediaserver &> /dev/null || systemctl is-active --quiet plexmediaserver 2>/dev/null; then
+    echo -e "${GREEN}  ✅ Plex already installed, skipping${NC}"
+else
+    echo -e "${YELLOW}  Installing Plex Media Server...${NC}"
+    curl -fsSL https://downloads.plex.tv/plex-keys/PlexSign.key | gpg --dearmor -o /usr/share/keyrings/plex-archive-keyring.gpg 2>/dev/null || true
+    echo "deb [signed-by=/usr/share/keyrings/plex-archive-keyring.gpg] https://downloads.plex.tv/repo/deb public main" > /etc/apt/sources.list.d/plexmediaserver.list || true
+    apt-get update -y
+    apt-get install -y plexmediaserver || echo -e "${RED}  ⚠️ Plex installation failed, skipping${NC}"
+    systemctl enable plexmediaserver 2>/dev/null || true
+    systemctl start plexmediaserver 2>/dev/null || true
+    echo -e "${GREEN}  ✅ Plex done${NC}"
+fi
 
 # --- SPOTIFY ---
 echo -e "${YELLOW}  Installing Spotify...${NC}"
-snap install spotify 2>/dev/null || flatpak install -y flathub com.spotify.Client 2>/dev/null || echo -e "${RED}  ⚠️ Spotify installation failed, skipping${NC}"
-echo -e "${GREEN}  ✅ Spotify done${NC}"
+if command -v spotify &> /dev/null; then
+    echo -e "${GREEN}  ✅ Spotify already installed${NC}"
+else
+    snap install spotify 2>/dev/null || flatpak install -y flathub com.spotify.Client 2>/dev/null || echo -e "${RED}  ⚠️ Spotify installation failed, skipping${NC}"
+    echo -e "${GREEN}  ✅ Spotify done${NC}"
+fi
 
 # --- FREETUBE ---
 echo -e "${YELLOW}  Installing FreeTube...${NC}"
@@ -118,13 +137,17 @@ echo -e "${GREEN}  ✅ FreeTube done${NC}"
 
 # --- VACUUMTUBE ---
 echo -e "${YELLOW}  Installing VacuumTube...${NC}"
-flatpak install -y flathub rocks.shy.VacuumTube 2>/dev/null || echo -e "${RED}  ⚠️ VacuumTube not available via flatpak${NC}"
+flatpak install -y flathub rocks.shy.VacuumTube 2>/dev/null || echo -e "${YELLOW}  ⚠️ VacuumTube not available via flatpak, skipping${NC}"
 echo -e "${GREEN}  ✅ VacuumTube done${NC}"
 
 # --- VLC ---
-echo -e "${YELLOW}  Installing VLC Media Player...${NC}"
-apt-get install -y vlc || echo -e "${RED}  ⚠️ VLC installation failed, skipping${NC}"
-echo -e "${GREEN}  ✅ VLC done${NC}"
+if command -v vlc &> /dev/null; then
+    echo -e "${GREEN}  ✅ VLC already installed, skipping${NC}"
+else
+    echo -e "${YELLOW}  Installing VLC Media Player...${NC}"
+    apt-get install -y vlc || echo -e "${RED}  ⚠️ VLC installation failed, skipping${NC}"
+    echo -e "${GREEN}  ✅ VLC done${NC}"
+fi
 
 # ============================================
 # INSTALL NEXUS TV OS
@@ -139,17 +162,20 @@ cd "$INSTALL_DIR"
 # Clone from GitHub
 echo -e "${YELLOW}  Cloning Nexus TV OS from GitHub...${NC}"
 if [ -d "$INSTALL_DIR/.git" ]; then
-    git pull origin main || true
+    git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || true
 else
-    git clone https://github.com/josansaab/TV-OS.git . || true
+    rm -rf "$INSTALL_DIR"/*
+    git clone https://github.com/josansaab/TV-OS.git . 2>/dev/null || {
+        echo -e "${RED}  ⚠️ Failed to clone repository${NC}"
+    }
 fi
 
 # Install npm dependencies
 if [ -f "package.json" ]; then
     echo -e "${YELLOW}  Installing npm dependencies...${NC}"
-    npm install --production || npm install
+    npm install --production 2>/dev/null || npm install 2>/dev/null || true
     echo -e "${YELLOW}  Building application...${NC}"
-    npm run build || true
+    npm run build 2>/dev/null || true
 fi
 
 # Create dedicated user
@@ -287,8 +313,6 @@ chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config"
 # ============================================
 
 echo -e "${YELLOW}🔧 Creating nexus-tv command...${NC}"
-
-CHROMIUM_CMD_ESCAPED=$(echo "$CHROMIUM_CMD" | sed 's/\//\\\//g')
 
 cat > /usr/local/bin/nexus-tv << EOF
 #!/bin/bash

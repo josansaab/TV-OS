@@ -1,6 +1,9 @@
 # Nexus TV OS
 
-A modern, cinematic TV operating system interface for Ubuntu. Transform your PC into a smart TV experience with support for Plex, Kodi, Netflix, and more.
+A modern, cinematic TV operating system interface for Ubuntu. Transform your PC or NUC into a smart TV experience with support for Plex, Kodi, Netflix, and more.
+
+![Nexus TV OS](https://img.shields.io/badge/Ubuntu-22.04%20%7C%2024.04-orange?style=for-the-badge&logo=ubuntu)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 ## Features
 
@@ -13,23 +16,21 @@ A modern, cinematic TV operating system interface for Ubuntu. Transform your PC 
 
 ## Supported Apps
 
-- Plex Media Server
-- Kodi Media Center
-- Netflix
-- Amazon Prime Video
-- Spotify
-- YouTube
-- Kayo Sports
-- FreeTube
-- VacuumTube
-- Chaupal
+| Native Apps | Web Apps |
+|-------------|----------|
+| Plex Media Server | Netflix |
+| Kodi Media Center | Amazon Prime Video |
+| Spotify | YouTube TV |
+| FreeTube | Kayo Sports |
+| VacuumTube | Chaupal |
+| VLC Media Player | |
 
-## Quick Install (Ubuntu 24.03+)
+## Quick Install
 
 Install Nexus TV OS with a single command:
 
 ```bash
-curl -sL https://nexus-os.tv/install.sh | sudo bash
+curl -sL https://raw.githubusercontent.com/josansaab/TV-OS/main/install.sh | sudo bash
 ```
 
 After installation, reboot your system:
@@ -40,54 +41,51 @@ sudo reboot
 
 Your system will boot directly into Nexus TV OS in fullscreen kiosk mode.
 
-## Manual Installation
+## System Requirements
 
-### Prerequisites
+- **OS**: Ubuntu 22.04 LTS or Ubuntu 24.04 LTS
+- **RAM**: 2GB minimum, 4GB recommended
+- **CPU**: Dual-core processor or better
+- **Display**: 1920x1080 or higher recommended
+- **Network**: Broadband internet for streaming
 
-- Ubuntu 24.03 or later
-- Node.js 20+
-- 2GB RAM minimum
-- Internet connection
+## What Gets Installed
 
-### Steps
+The installer automatically sets up:
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/nexus-tv.git
-cd nexus-tv
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Build the application:
-```bash
-npm run build
-```
-
-4. Run the installer:
-```bash
-sudo bash install.sh
-```
-
-5. Reboot:
-```bash
-sudo reboot
-```
+- **Kodi** - Full media center with add-on support
+- **Plex Media Server** - Stream your media library (runs on port 32400)
+- **Spotify** - Music streaming (via Snap or Flatpak)
+- **FreeTube** - Privacy-focused YouTube client
+- **VacuumTube** - YouTube TV interface for desktop
+- **VLC** - Universal media player
+- **Web Apps** - Netflix, Prime Video, YouTube, Kayo, Chaupal
 
 ## Usage
 
 ### Control Commands
 
 ```bash
-nexus-tv start      # Start Nexus TV
-nexus-tv stop       # Stop Nexus TV
-nexus-tv restart    # Restart Nexus TV
+nexus-tv start      # Start Nexus TV service
+nexus-tv stop       # Stop Nexus TV service
+nexus-tv restart    # Restart Nexus TV service
 nexus-tv status     # Show service status
 nexus-tv logs       # Show live logs
-nexus-tv update     # Update to latest version
+nexus-tv launch <app>  # Launch a specific app
+```
+
+### Launch Apps Directly
+
+```bash
+nexus-tv launch kodi
+nexus-tv launch plex
+nexus-tv launch netflix
+nexus-tv launch spotify
+nexus-tv launch youtube
+nexus-tv launch freetube
+nexus-tv launch prime
+nexus-tv launch kayo
+nexus-tv launch chaupal
 ```
 
 ### Navigation
@@ -98,15 +96,38 @@ nexus-tv update     # Update to latest version
 - **Alt + F4** - Exit kiosk mode
 - **F11** - Toggle fullscreen (when not in kiosk mode)
 
-### Exiting Kiosk Mode
+## Manual Installation
 
-Press `Alt + F4` to exit the kiosk mode and return to desktop.
+### Prerequisites
+
+- Ubuntu 22.04 or 24.04
+- Sudo access
+- Internet connection
+
+### Steps
+
+1. Clone the repository:
+```bash
+git clone https://github.com/josansaab/TV-OS.git
+cd TV-OS
+```
+
+2. Run the installer:
+```bash
+sudo bash install.sh
+```
+
+3. Reboot:
+```bash
+sudo reboot
+```
 
 ## Development
 
 ### Run in Development Mode
 
 ```bash
+npm install
 npm run dev
 ```
 
@@ -115,7 +136,7 @@ Access the interface at `http://localhost:5000`
 ### Project Structure
 
 ```
-nexus-tv/
+TV-OS/
 ├── client/              # Frontend React application
 │   ├── src/
 │   │   ├── components/  # React components
@@ -124,7 +145,7 @@ nexus-tv/
 │   └── index.html
 ├── server/              # Express backend
 │   ├── index.ts         # Server entry point
-│   ├── routes.ts        # API routes
+│   ├── routes.ts        # API routes (app launcher)
 │   └── storage.ts       # Data storage layer
 ├── shared/              # Shared types and schemas
 ├── install.sh           # System installer script
@@ -140,22 +161,6 @@ Edit `client/src/pages/Home.tsx` to add or modify apps in the launcher.
 ### Theme Customization
 
 Modify colors and styling in `client/src/index.css`.
-
-### Weather Widget
-
-The weather widget uses mock data. To add real weather:
-
-1. Get an API key from a weather service
-2. Update `client/src/components/tv/Widgets.tsx`
-3. Add API integration in the backend
-
-## System Requirements
-
-- **OS**: Ubuntu 24.03 or later
-- **RAM**: 2GB minimum, 4GB recommended
-- **CPU**: Dual-core processor or better
-- **Display**: 1920x1080 or higher
-- **Network**: Broadband internet for streaming
 
 ## Troubleshooting
 
@@ -179,12 +184,14 @@ Check LightDM configuration:
 cat /etc/lightdm/lightdm.conf.d/50-nexus-tv.conf
 ```
 
-### Apps not opening
+### Apps not launching
 
-Some apps require separate installation:
-- **Plex**: Install from https://www.plex.tv/downloads/
-- **Kodi**: `sudo apt install kodi`
-- **Others**: Web-based apps open in browser
+Make sure the apps are installed:
+```bash
+which kodi
+which vlc
+flatpak list
+```
 
 ## Uninstall
 
@@ -215,7 +222,7 @@ Contributions welcome! Please feel free to submit a Pull Request.
 
 ## Support
 
-For issues and questions, please visit our GitHub Issues page.
+For issues and questions, please visit our [GitHub Issues](https://github.com/josansaab/TV-OS/issues) page.
 
 ---
 

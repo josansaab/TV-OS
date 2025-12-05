@@ -470,52 +470,50 @@ export DISPLAY=:0
 
 NEXUS_PORT="${NEXUS_PORT:-5000}"
 
-# Get active app info from the backend
-ACTIVE=$(curl -s "http://localhost:$NEXUS_PORT/api/apps/active" 2>/dev/null)
-
-if echo "$ACTIVE" | grep -q '"active":true'; then
-    APP_ID=$(echo "$ACTIVE" | grep -o '"appId":"[^"]*"' | cut -d'"' -f4)
-    
-    if [ -n "$APP_ID" ]; then
-        # Close the active app via API
-        curl -s -X POST "http://localhost:$NEXUS_PORT/api/apps/$APP_ID/close" >/dev/null 2>&1
-    fi
-fi
+# Close active app via API (uses the correct endpoint)
+curl -s -X POST "http://localhost:$NEXUS_PORT/api/apps/close" >/dev/null 2>&1
 
 # Kill any kiosk browser windows (backup method) - but NOT the main TV OS browser
-# Get the TV OS browser PID to exclude it
-TV_BROWSER_PID=$(pgrep -f "app=http://localhost:5000" | head -1)
+# Get PIDs of the main TV OS browser to exclude
+TV_PIDS=$(pgrep -f "app=http://localhost:5000" 2>/dev/null || echo "")
 
-# Kill kiosk browsers for streaming apps
-for pid in $(pgrep -f "chromium.*--kiosk"); do
-    if [ "$pid" != "$TV_BROWSER_PID" ]; then
-        kill "$pid" 2>/dev/null || true
-    fi
+# Function to kill process if not TV OS
+kill_if_not_tv() {
+    local pid=$1
+    for tv_pid in $TV_PIDS; do
+        if [ "$pid" = "$tv_pid" ]; then
+            return
+        fi
+    done
+    kill -9 "$pid" 2>/dev/null || true
+}
+
+# Kill kiosk browsers - match various patterns for Chromium/Chrome/Firefox
+for pid in $(pgrep -f "kiosk.*netflix\|kiosk.*prime\|kiosk.*youtube\|kiosk.*kayo\|kiosk.*chaupal\|kiosk.*plex\|kiosk.*spotify" 2>/dev/null); do
+    kill_if_not_tv "$pid"
 done
 
-for pid in $(pgrep -f "chromium-browser.*--kiosk"); do
-    if [ "$pid" != "$TV_BROWSER_PID" ]; then
-        kill "$pid" 2>/dev/null || true
-    fi
-done
-
-for pid in $(pgrep -f "firefox.*--kiosk"); do
-    if [ "$pid" != "$TV_BROWSER_PID" ]; then
-        kill "$pid" 2>/dev/null || true
-    fi
-done
-
-for pid in $(pgrep -f "google-chrome.*--kiosk"); do
-    if [ "$pid" != "$TV_BROWSER_PID" ]; then
-        kill "$pid" 2>/dev/null || true
+# Also kill any browser with --kiosk that's NOT showing localhost:5000
+for pid in $(pgrep -f "\-\-kiosk" 2>/dev/null); do
+    # Check if this PID is in TV_PIDS
+    is_tv=0
+    for tv_pid in $TV_PIDS; do
+        if [ "$pid" = "$tv_pid" ]; then
+            is_tv=1
+            break
+        fi
+    done
+    if [ "$is_tv" = "0" ]; then
+        kill -9 "$pid" 2>/dev/null || true
     fi
 done
 
 # Kill native apps that might be running fullscreen
-pkill -f "^kodi" 2>/dev/null || true
-pkill -f "spotify --" 2>/dev/null || true
-pkill -f "^vlc" 2>/dev/null || true
-pkill -f "freetube" 2>/dev/null || true
+pkill -9 -f "kodi" 2>/dev/null || true
+pkill -9 -f "spotify" 2>/dev/null || true
+pkill -9 -f "vlc" 2>/dev/null || true
+pkill -9 -f "FreeTube" 2>/dev/null || true
+pkill -9 -f "io.freetubeapp" 2>/dev/null || true
 
 # Small delay then bring TV OS window back to focus
 sleep 0.3

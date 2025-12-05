@@ -3,25 +3,36 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 interface AppCardProps {
+  id?: string;
   title: string;
   color: string;
   icon?: React.ReactNode;
   wide?: boolean;
+  url?: string;
   onClick?: () => void;
 }
 
-export function AppCard({ title, color, icon, wide, onClick }: AppCardProps) {
+export function AppCard({ id, title, color, icon, wide, url, onClick }: AppCardProps) {
   const [isFocused, setIsFocused] = useState(false);
+
+  const handleClick = () => {
+    if (onClick) {
+      onClick();
+    } else if (url) {
+      window.open(url, '_blank');
+    }
+  };
 
   return (
     <motion.button
-      onClick={onClick}
+      onClick={handleClick}
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
       onMouseEnter={() => setIsFocused(true)}
       onMouseLeave={() => setIsFocused(false)}
       whileHover={{ scale: 1.05 }}
       whileFocus={{ scale: 1.05 }}
+      data-testid={`app-card-${id || title.toLowerCase().replace(/\s+/g, '-')}`}
       className={cn(
         "relative group rounded-2xl overflow-hidden outline-none border border-white/5 shadow-lg transition-all duration-300 cursor-pointer",
         wide ? "col-span-2 aspect-[2/1]" : "aspect-square",
@@ -43,7 +54,7 @@ export function AppCard({ title, color, icon, wide, onClick }: AppCardProps) {
       {/* Focus Glow */}
       {isFocused && (
         <motion.div 
-          layoutId="glow"
+          layoutId={`glow-${id}`}
           className="absolute inset-0 bg-white/10 mix-blend-overlay"
         />
       )}

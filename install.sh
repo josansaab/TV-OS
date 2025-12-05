@@ -88,10 +88,13 @@ echo -e "${BLUE}📺 Installing Media Applications...${NC}"
 echo ""
 
 # --- KODI ---
-echo -e "${YELLOW}  Installing Kodi from Ubuntu repository...${NC}"
-# Note: PPA doesn't support Ubuntu 24.04 yet, using official repo
-apt-get install -y kodi || echo -e "${RED}  ⚠️ Kodi installation failed, skipping${NC}"
-echo -e "${GREEN}  ✅ Kodi done${NC}"
+if command -v kodi &> /dev/null; then
+    echo -e "${GREEN}  ✅ Kodi already installed, skipping${NC}"
+else
+    echo -e "${YELLOW}  Installing Kodi from Ubuntu repository...${NC}"
+    apt-get install -y kodi || echo -e "${RED}  ⚠️ Kodi installation failed, skipping${NC}"
+    echo -e "${GREEN}  ✅ Kodi done${NC}"
+fi
 
 # --- PLEX MEDIA SERVER ---
 echo -e "${YELLOW}  Installing Plex Media Server...${NC}"

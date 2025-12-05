@@ -43,7 +43,6 @@ apt-get install -y \
     curl \
     wget \
     git \
-    chromium-browser \
     x11-xserver-utils \
     unclutter \
     lightdm \
@@ -52,24 +51,14 @@ apt-get install -y \
     flatpak \
     snapd \
     software-properties-common \
-    gnupg \
-    || {
-        echo -e "${YELLOW}Trying alternative packages...${NC}"
-        apt-get install -y \
-            curl \
-            wget \
-            git \
-            chromium \
-            x11-xserver-utils \
-            unclutter \
-            lightdm \
-            openbox \
-            pulseaudio \
-            flatpak \
-            snapd \
-            software-properties-common \
-            gnupg
-    }
+    gnupg
+
+# Install Chromium via Snap (Ubuntu 22.04+ default)
+echo -e "${YELLOW}📦 Installing Chromium browser via Snap...${NC}"
+snap install chromium 2>/dev/null || {
+    echo -e "${YELLOW}Snap chromium failed, trying apt...${NC}"
+    apt-get install -y chromium-browser 2>/dev/null || apt-get install -y chromium 2>/dev/null || true
+}
 
 # Add Flathub repository
 echo -e "${YELLOW}📦 Adding Flathub repository...${NC}"
@@ -218,7 +207,17 @@ EOF
 echo -e "${YELLOW}📱 Creating web app shortcuts...${NC}"
 
 APPS_DIR="/usr/share/applications"
-CHROMIUM_CMD=$(command -v chromium-browser || command -v chromium || echo "chromium-browser")
+# Detect Chromium path (Snap version takes priority on Ubuntu 22.04+)
+if [ -x "/snap/bin/chromium" ]; then
+    CHROMIUM_CMD="/snap/bin/chromium"
+elif command -v chromium &> /dev/null; then
+    CHROMIUM_CMD=$(command -v chromium)
+elif command -v chromium-browser &> /dev/null; then
+    CHROMIUM_CMD=$(command -v chromium-browser)
+else
+    CHROMIUM_CMD="/snap/bin/chromium"
+fi
+echo -e "${BLUE}Using Chromium at: $CHROMIUM_CMD${NC}"
 
 cat > "$APPS_DIR/nexus-netflix.desktop" << EOF
 [Desktop Entry]

@@ -52,7 +52,10 @@ apt-get install -y -qq \
     snapd \
     software-properties-common \
     gnupg \
-    firefox
+    firefox \
+    xbindkeys \
+    wmctrl \
+    xdotool
 
 log_ok "System dependencies installed"
 
@@ -453,6 +456,79 @@ chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config"
 log_ok "Kiosk mode configured"
 
 # ============================================
+# CREATE APP EXIT/RETURN-TO-TV SHORTCUTS
+# ============================================
+
+log_info "Setting up keyboard shortcuts to return to TV OS..."
+
+# Create close-app script that kills active kiosk apps and returns to TV
+cat > "$USER_HOME/.config/nexus-tv/close-app.sh" << 'CLOSEEOF'
+#!/bin/bash
+# Close active app and return to Nexus TV OS
+
+NEXUS_PORT="${NEXUS_PORT:-5000}"
+
+# Get active app info from the backend
+ACTIVE=$(curl -s "http://localhost:$NEXUS_PORT/api/apps/active" 2>/dev/null)
+
+if echo "$ACTIVE" | grep -q '"active":true'; then
+    APP_ID=$(echo "$ACTIVE" | grep -o '"appId":"[^"]*"' | cut -d'"' -f4)
+    
+    if [ -n "$APP_ID" ]; then
+        # Close the active app via API
+        curl -s -X POST "http://localhost:$NEXUS_PORT/api/apps/$APP_ID/close" >/dev/null 2>&1
+    fi
+fi
+
+# Kill any kiosk browser windows (backup method)
+pkill -f "chromium.*--kiosk" 2>/dev/null || true
+pkill -f "chromium-browser.*--kiosk" 2>/dev/null || true
+pkill -f "firefox.*--kiosk" 2>/dev/null || true
+pkill -f "google-chrome.*--kiosk" 2>/dev/null || true
+
+# Kill native apps that might be running fullscreen
+pkill -f "kodi" 2>/dev/null || true
+pkill -f "spotify" 2>/dev/null || true
+pkill -f "vlc" 2>/dev/null || true
+pkill -f "freetube" 2>/dev/null || true
+
+# Small delay then bring TV OS window back to focus
+sleep 0.3
+wmctrl -a "Nexus TV" 2>/dev/null || wmctrl -a "localhost:5000" 2>/dev/null || true
+CLOSEEOF
+
+chmod +x "$USER_HOME/.config/nexus-tv/close-app.sh"
+
+# Create xbindkeys configuration for global keyboard shortcuts
+cat > "$USER_HOME/.xbindkeysrc" << XBINDEOF
+# Nexus TV OS Keyboard Shortcuts
+# Press Escape, Home, or Backspace to return to TV interface
+
+# Escape key - return to TV
+"$USER_HOME/.config/nexus-tv/close-app.sh"
+    Escape
+
+# Home/Super key - return to TV  
+"$USER_HOME/.config/nexus-tv/close-app.sh"
+    XF86HomePage
+
+# Browser Back button (on remotes/keyboards)
+"$USER_HOME/.config/nexus-tv/close-app.sh"
+    XF86Back
+
+# Backspace as backup
+"$USER_HOME/.config/nexus-tv/close-app.sh"
+    BackSpace
+XBINDEOF
+
+chown "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.xbindkeysrc"
+
+# Add xbindkeys to the kiosk startup script
+sed -i '/^xset s off/a xbindkeys 2>/dev/null \&' "$USER_HOME/.config/nexus-tv/start-kiosk.sh"
+
+log_ok "Keyboard shortcuts configured (Escape/Home/Backspace to exit apps)"
+
+# ============================================
 # CREATE CLI CONTROL COMMAND
 # ============================================
 
@@ -474,6 +550,11 @@ case "\$1" in
     restart)
         systemctl --user restart nexus-tv.service
         echo "Nexus TV restarted"
+        ;;
+    close)
+        # Close any running app and return to TV
+        $USER_HOME/.config/nexus-tv/close-app.sh
+        echo "Closed active app, returning to TV"
         ;;
     status)
         systemctl --user status nexus-tv.service
@@ -523,15 +604,22 @@ case "\$1" in
     *)
         echo "Nexus TV OS Control"
         echo ""
-        echo "Usage: nexus-tv {start|stop|restart|status|logs|kiosk|launch <app>}"
+        echo "Usage: nexus-tv {start|stop|restart|close|status|logs|kiosk|launch <app>}"
         echo ""
         echo "Commands:"
         echo "  start           - Start Nexus TV"
         echo "  stop            - Stop Nexus TV"
         echo "  restart         - Restart Nexus TV"
+        echo "  close           - Close active app and return to TV"
         echo "  status          - Show service status"
         echo "  logs            - Show live logs"
+        echo "  kiosk           - Start in fullscreen kiosk mode"
         echo "  launch <app>    - Launch an app (plex, kodi, netflix, etc.)"
+        echo ""
+        echo "Keyboard shortcuts (while in kiosk mode):"
+        echo "  ESCAPE          - Return to TV interface"
+        echo "  BACKSPACE       - Return to TV interface"
+        echo "  HOME            - Return to TV interface"
         ;;
 esac
 CLIEOF
@@ -570,7 +658,10 @@ echo "  1. Log out and log back in (or reboot)"
 echo "  2. Start TV OS: nexus-tv start"
 echo "  3. Open kiosk mode: nexus-tv kiosk"
 echo "  4. Launch apps: nexus-tv launch kodi"
-echo "  5. Exit kiosk mode: Alt+F4"
+echo ""
+echo "EXIT FROM APPS:"
+echo "  Press ESCAPE, BACKSPACE, or HOME key to return to TV interface"
+echo "  These keys work globally while any app is running"
 echo ""
 echo "The TV OS now runs as YOUR user, so it can launch"
 echo "native apps like Kodi directly from the interface!"

@@ -303,16 +303,58 @@ log_ok "Web app shortcuts created"
 
 log_info "Configuring auto-login and kiosk mode..."
 
+# Set LightDM as the default display manager (Ubuntu 22.04 uses gdm3 by default)
+log_info "Setting LightDM as default display manager..."
+
+# Stop and disable gdm3 if running
+systemctl stop gdm3 2>/dev/null || true
+systemctl disable gdm3 2>/dev/null || true
+
+# Configure LightDM as default display manager
+echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
+
+# Use debconf to set LightDM as default (non-interactive)
+echo "lightdm shared/default-x-display-manager select lightdm" | debconf-set-selections 2>/dev/null || true
+DEBIAN_FRONTEND=noninteractive dpkg-reconfigure lightdm 2>/dev/null || true
+
+# Enable and start LightDM
+systemctl enable lightdm 2>/dev/null || true
+
+# Set graphical target as default boot target
+log_info "Setting graphical boot target..."
+systemctl set-default graphical.target
+
+# Create LightDM autologin configuration
 mkdir -p /etc/lightdm/lightdm.conf.d/
 cat > /etc/lightdm/lightdm.conf.d/50-nexus-tv.conf << LIGHTDMEOF
 [Seat:*]
 autologin-user=$ACTUAL_USER
 autologin-user-timeout=0
 user-session=openbox
+autologin-session=openbox
+greeter-session=lightdm-gtk-greeter
 LIGHTDMEOF
 
+# Also create main lightdm.conf for autologin
+cat > /etc/lightdm/lightdm.conf << LIGHTDMMAINEOF
+[Seat:*]
+autologin-user=$ACTUAL_USER
+autologin-user-timeout=0
+user-session=openbox
+autologin-session=openbox
+LIGHTDMMAINEOF
+
+# Add user to autologin group
+groupadd -f autologin 2>/dev/null || true
+usermod -a -G autologin "$ACTUAL_USER" 2>/dev/null || true
+
+log_ok "LightDM configured"
+
+# Create Openbox autostart script
 mkdir -p "$USER_HOME/.config/openbox"
 cat > "$USER_HOME/.config/openbox/autostart" << AUTOEOF
+#!/bin/bash
+
 # Disable screen saver and power management
 xset s off &
 xset -dpms &
@@ -321,10 +363,13 @@ xset s noblank &
 # Hide cursor after 0.5 seconds of inactivity
 unclutter -idle 0.5 -root &
 
-# Wait for network and services
-sleep 5
+# Start the Nexus TV backend service
+sudo systemctl start nexus-tv &
 
-# Start Nexus TV in fullscreen kiosk mode
+# Wait for backend to be ready
+sleep 8
+
+# Start browser in fullscreen kiosk mode
 $BROWSER_CMD \
   --kiosk \
   --noerrdialogs \
@@ -336,7 +381,14 @@ $BROWSER_CMD \
   --app=http://localhost:5000 &
 AUTOEOF
 
+chmod +x "$USER_HOME/.config/openbox/autostart"
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config"
+
+# Allow the user to run systemctl start nexus-tv without password
+echo "$ACTUAL_USER ALL=(ALL) NOPASSWD: /bin/systemctl start nexus-tv, /bin/systemctl stop nexus-tv, /bin/systemctl restart nexus-tv" > /etc/sudoers.d/nexus-tv
+chmod 440 /etc/sudoers.d/nexus-tv
+
+log_ok "Kiosk mode configured"
 
 # ============================================
 # CREATE CLI CONTROL COMMAND

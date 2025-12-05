@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Search, Settings, User, Grid, Power } from 'lucide-react';
+import { Home, Search, Settings, User, Grid, Power, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { systemPower } from '@/lib/api';
 
@@ -24,6 +24,11 @@ export function Sidebar({ activeTab = 'home', onTabChange }: SidebarProps) {
   const handlePower = async (action: 'shutdown' | 'restart') => {
     setShowPowerMenu(false);
     await systemPower(action);
+  };
+
+  const handleExitKiosk = () => {
+    setShowPowerMenu(false);
+    window.close();
   };
 
   return (
@@ -112,8 +117,15 @@ export function Sidebar({ activeTab = 'home', onTabChange }: SidebarProps) {
               className="absolute left-full bottom-0 ml-4 bg-black/80 backdrop-blur-xl rounded-xl border border-white/10 overflow-hidden z-50"
             >
               <button
-                onClick={() => handlePower('restart')}
+                onClick={handleExitKiosk}
                 className="w-full px-6 py-3 text-left text-white hover:bg-white/10 transition-colors flex items-center gap-3"
+                data-testid="button-exit-kiosk"
+              >
+                <LogOut className="w-4 h-4 text-blue-400" /> Exit Kiosk
+              </button>
+              <button
+                onClick={() => handlePower('restart')}
+                className="w-full px-6 py-3 text-left text-white hover:bg-white/10 transition-colors flex items-center gap-3 border-t border-white/10"
                 data-testid="button-restart"
               >
                 <span className="text-yellow-400">↻</span> Restart

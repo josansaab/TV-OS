@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Home, Search, Settings, User, Grid, Power } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { systemPower } from '@/lib/api';
 
 const navItems = [
   { icon: Search, label: 'Search', id: 'search' },
@@ -18,6 +19,12 @@ interface SidebarProps {
 
 export function Sidebar({ activeTab = 'home', onTabChange }: SidebarProps) {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [showPowerMenu, setShowPowerMenu] = useState(false);
+
+  const handlePower = async (action: 'shutdown' | 'restart') => {
+    setShowPowerMenu(false);
+    await systemPower(action);
+  };
 
   return (
     <div className="h-full w-24 flex flex-col items-center py-10 z-50 relative">
@@ -67,29 +74,60 @@ export function Sidebar({ activeTab = 'home', onTabChange }: SidebarProps) {
               />
               
               {/* Tooltip */}
-              {isHovered && (
-                <motion.div
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="absolute left-full ml-4 px-3 py-1.5 bg-white/10 backdrop-blur-md rounded-lg text-sm text-white whitespace-nowrap z-50"
-                >
-                  {item.label}
-                </motion.div>
-              )}
+              <AnimatePresence>
+                {isHovered && (
+                  <motion.div
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    className="absolute left-full ml-4 px-3 py-1.5 bg-white/10 backdrop-blur-md rounded-lg text-sm text-white whitespace-nowrap z-50"
+                  >
+                    {item.label}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.button>
           );
         })}
       </nav>
 
-      <div className="mt-auto">
+      <div className="mt-auto relative">
         <motion.button 
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.95 }}
+          onClick={() => setShowPowerMenu(!showPowerMenu)}
           className="p-3 rounded-xl text-white/40 hover:text-red-400 transition-colors hover:bg-white/5"
           data-testid="button-power"
         >
           <Power className="w-6 h-6" />
         </motion.button>
+
+        {/* Power Menu */}
+        <AnimatePresence>
+          {showPowerMenu && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, x: -10 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.9, x: -10 }}
+              className="absolute left-full bottom-0 ml-4 bg-black/80 backdrop-blur-xl rounded-xl border border-white/10 overflow-hidden z-50"
+            >
+              <button
+                onClick={() => handlePower('restart')}
+                className="w-full px-6 py-3 text-left text-white hover:bg-white/10 transition-colors flex items-center gap-3"
+                data-testid="button-restart"
+              >
+                <span className="text-yellow-400">↻</span> Restart
+              </button>
+              <button
+                onClick={() => handlePower('shutdown')}
+                className="w-full px-6 py-3 text-left text-white hover:bg-white/10 transition-colors flex items-center gap-3 border-t border-white/10"
+                data-testid="button-shutdown"
+              >
+                <span className="text-red-400">⏻</span> Shut Down
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

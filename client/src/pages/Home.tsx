@@ -24,71 +24,61 @@ const apps = [
     title: 'Plex', 
     color: 'linear-gradient(135deg, #e5a00d 0%, #1a1a1a 100%)', 
     icon: <img src={plexLogo} alt="Plex" className="w-20 h-20 object-contain rounded-xl" />, 
-    wide: true,
-    url: 'http://localhost:32400/web'
+    wide: true
   },
   { 
     id: 'netflix', 
     title: 'Netflix', 
     color: 'linear-gradient(135deg, #E50914 0%, #141414 100%)', 
-    icon: <img src={netflixLogo} alt="Netflix" className="w-16 h-16 object-contain rounded-xl" />,
-    url: 'https://www.netflix.com/browse'
+    icon: <img src={netflixLogo} alt="Netflix" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'prime', 
     title: 'Prime Video', 
     color: 'linear-gradient(135deg, #00A8E1 0%, #232f3e 100%)', 
-    icon: <img src={primeLogo} alt="Prime Video" className="w-16 h-16 object-contain rounded-xl" />,
-    url: 'https://www.primevideo.com'
+    icon: <img src={primeLogo} alt="Prime Video" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'spotify', 
     title: 'Spotify', 
     color: 'linear-gradient(135deg, #1DB954 0%, #191414 100%)', 
-    icon: <img src={spotifyLogo} alt="Spotify" className="w-16 h-16 object-contain rounded-xl" />,
-    url: 'https://open.spotify.com'
+    icon: <img src={spotifyLogo} alt="Spotify" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'youtube', 
     title: 'YouTube', 
     color: 'linear-gradient(135deg, #FF0000 0%, #282828 100%)', 
-    icon: <img src={youtubeLogo} alt="YouTube" className="w-16 h-16 object-contain rounded-xl" />,
-    url: 'https://www.youtube.com/tv'
+    icon: <img src={youtubeLogo} alt="YouTube" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'kodi', 
     title: 'Kodi', 
     color: 'linear-gradient(135deg, #17B2E7 0%, #0F2027 100%)', 
-    icon: <img src={kodiLogo} alt="Kodi" className="w-16 h-16 object-contain rounded-xl" />,
-    url: 'kodi://'
+    icon: <img src={kodiLogo} alt="Kodi" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'kayo', 
     title: 'Kayo Sports', 
     color: 'linear-gradient(135deg, #00C365 0%, #0a1f12 100%)', 
-    icon: <img src={kayoLogo} alt="Kayo Sports" className="w-16 h-16 object-contain rounded-xl" />,
-    url: 'https://kayosports.com.au'
+    icon: <img src={kayoLogo} alt="Kayo Sports" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'freetube', 
     title: 'FreeTube', 
     color: 'linear-gradient(135deg, #364F6B 0%, #1E2A38 100%)', 
-    icon: <img src={freetubeLogo} alt="FreeTube" className="w-16 h-16 object-contain rounded-xl" />,
-    url: 'freetube://'
+    icon: <img src={freetubeLogo} alt="FreeTube" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'vacuumtube', 
     title: 'VacuumTube', 
     color: 'linear-gradient(135deg, #6B364F 0%, #1a0f14 100%)', 
-    icon: <img src={vacuumtubeLogo} alt="VacuumTube" className="w-16 h-16 object-contain rounded-xl" />,
-    url: 'https://www.youtube.com/tv'
+    icon: <img src={vacuumtubeLogo} alt="VacuumTube" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'chaupal', 
     title: 'Chaupal', 
     color: 'linear-gradient(135deg, #FF512F 0%, #DD2476 100%)', 
-    icon: <img src={chaupalLogo} alt="Chaupal" className="w-16 h-16 object-contain rounded-xl" />,
-    url: 'https://chaupal.tv'
+    icon: <img src={chaupalLogo} alt="Chaupal" className="w-16 h-16 object-contain rounded-xl" />
   },
 ];
 
@@ -158,7 +148,6 @@ export default function Home() {
                   color={app.color}
                   icon={app.icon}
                   wide={app.wide}
-                  url={app.url}
                 />
               ))}
               

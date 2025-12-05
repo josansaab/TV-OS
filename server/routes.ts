@@ -2,6 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { storage } from "./storage";
 
 const execAsync = promisify(exec);
@@ -24,6 +26,19 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
+  // Serve the install script
+  app.get("/install.sh", (req, res) => {
+    try {
+      const scriptPath = join(process.cwd(), "install.sh");
+      const script = readFileSync(scriptPath, "utf-8");
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Content-Disposition", "attachment; filename=install.sh");
+      res.send(script);
+    } catch (error) {
+      res.status(500).send("# Error: Could not load install script");
+    }
+  });
+
   app.post("/api/launch/:appId", async (req, res) => {
     const { appId } = req.params;
     const command = APP_COMMANDS[appId];

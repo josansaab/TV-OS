@@ -10,10 +10,12 @@ interface AppCardProps {
   color: string;
   icon?: React.ReactNode;
   wide?: boolean;
+  url?: string;
+  appType?: 'web' | 'native';
   onClick?: () => void;
 }
 
-export function AppCard({ id, title, color, icon, wide, onClick }: AppCardProps) {
+export function AppCard({ id, title, color, icon, wide, url, appType, onClick }: AppCardProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const { toast } = useToast();
@@ -26,20 +28,46 @@ export function AppCard({ id, title, color, icon, wide, onClick }: AppCardProps)
     
     if (id) {
       setIsLaunching(true);
-      const result = await launchApp(id);
-      setIsLaunching(false);
       
-      if (result.success) {
+      if (appType === 'web' && url) {
+        window.open(url, '_blank');
         toast({
-          title: `Launching ${title}`,
-          description: "The app is starting...",
+          title: `Opening ${title}`,
+          description: "Opening in new window...",
         });
+        setIsLaunching(false);
+      } else if (appType === 'native') {
+        const result = await launchApp(id);
+        setIsLaunching(false);
+        
+        if (result.success) {
+          toast({
+            title: `Launching ${title}`,
+            description: "The app is starting...",
+          });
+        } else {
+          toast({
+            title: "Launch Failed",
+            description: result.error || "Could not start the app. Make sure it's installed.",
+            variant: "destructive",
+          });
+        }
       } else {
-        toast({
-          title: "Launch Failed",
-          description: result.error || "Could not start the app",
-          variant: "destructive",
-        });
+        const result = await launchApp(id);
+        setIsLaunching(false);
+        
+        if (result.success) {
+          toast({
+            title: `Launching ${title}`,
+            description: "The app is starting...",
+          });
+        } else {
+          toast({
+            title: "Launch Failed", 
+            description: result.error || "Could not start the app",
+            variant: "destructive",
+          });
+        }
       }
     }
   };

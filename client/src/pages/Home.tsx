@@ -18,67 +18,92 @@ import freetubeLogo from '@assets/generated_images/freetube_app_logo_icon.png';
 import vacuumtubeLogo from '@assets/generated_images/vacuumtube_app_logo_icon.png';
 import chaupalLogo from '@assets/generated_images/chaupal_streaming_app_logo.png';
 
-const apps = [
+const apps: Array<{
+  id: string;
+  title: string;
+  color: string;
+  icon: React.ReactNode;
+  wide?: boolean;
+  url?: string;
+  type: 'web' | 'native';
+}> = [
   { 
     id: 'plex', 
     title: 'Plex', 
     color: 'linear-gradient(135deg, #e5a00d 0%, #1a1a1a 100%)', 
     icon: <img src={plexLogo} alt="Plex" className="w-20 h-20 object-contain rounded-xl" />, 
-    wide: true
+    wide: true,
+    url: 'http://localhost:32400/web',
+    type: 'web'
   },
   { 
     id: 'netflix', 
     title: 'Netflix', 
     color: 'linear-gradient(135deg, #E50914 0%, #141414 100%)', 
-    icon: <img src={netflixLogo} alt="Netflix" className="w-16 h-16 object-contain rounded-xl" />
+    icon: <img src={netflixLogo} alt="Netflix" className="w-16 h-16 object-contain rounded-xl" />,
+    url: 'https://www.netflix.com/browse',
+    type: 'web'
   },
   { 
     id: 'prime', 
     title: 'Prime Video', 
     color: 'linear-gradient(135deg, #00A8E1 0%, #232f3e 100%)', 
-    icon: <img src={primeLogo} alt="Prime Video" className="w-16 h-16 object-contain rounded-xl" />
+    icon: <img src={primeLogo} alt="Prime Video" className="w-16 h-16 object-contain rounded-xl" />,
+    url: 'https://www.primevideo.com',
+    type: 'web'
   },
   { 
     id: 'spotify', 
     title: 'Spotify', 
     color: 'linear-gradient(135deg, #1DB954 0%, #191414 100%)', 
-    icon: <img src={spotifyLogo} alt="Spotify" className="w-16 h-16 object-contain rounded-xl" />
+    icon: <img src={spotifyLogo} alt="Spotify" className="w-16 h-16 object-contain rounded-xl" />,
+    url: 'https://open.spotify.com',
+    type: 'web'
   },
   { 
     id: 'youtube', 
     title: 'YouTube', 
     color: 'linear-gradient(135deg, #FF0000 0%, #282828 100%)', 
-    icon: <img src={youtubeLogo} alt="YouTube" className="w-16 h-16 object-contain rounded-xl" />
+    icon: <img src={youtubeLogo} alt="YouTube" className="w-16 h-16 object-contain rounded-xl" />,
+    url: 'https://www.youtube.com/tv',
+    type: 'web'
   },
   { 
     id: 'kodi', 
     title: 'Kodi', 
     color: 'linear-gradient(135deg, #17B2E7 0%, #0F2027 100%)', 
-    icon: <img src={kodiLogo} alt="Kodi" className="w-16 h-16 object-contain rounded-xl" />
+    icon: <img src={kodiLogo} alt="Kodi" className="w-16 h-16 object-contain rounded-xl" />,
+    type: 'native'
   },
   { 
     id: 'kayo', 
     title: 'Kayo Sports', 
     color: 'linear-gradient(135deg, #00C365 0%, #0a1f12 100%)', 
-    icon: <img src={kayoLogo} alt="Kayo Sports" className="w-16 h-16 object-contain rounded-xl" />
+    icon: <img src={kayoLogo} alt="Kayo Sports" className="w-16 h-16 object-contain rounded-xl" />,
+    url: 'https://kayosports.com.au',
+    type: 'web'
   },
   { 
     id: 'freetube', 
     title: 'FreeTube', 
     color: 'linear-gradient(135deg, #364F6B 0%, #1E2A38 100%)', 
-    icon: <img src={freetubeLogo} alt="FreeTube" className="w-16 h-16 object-contain rounded-xl" />
+    icon: <img src={freetubeLogo} alt="FreeTube" className="w-16 h-16 object-contain rounded-xl" />,
+    type: 'native'
   },
   { 
     id: 'vacuumtube', 
     title: 'VacuumTube', 
     color: 'linear-gradient(135deg, #6B364F 0%, #1a0f14 100%)', 
-    icon: <img src={vacuumtubeLogo} alt="VacuumTube" className="w-16 h-16 object-contain rounded-xl" />
+    icon: <img src={vacuumtubeLogo} alt="VacuumTube" className="w-16 h-16 object-contain rounded-xl" />,
+    type: 'native'
   },
   { 
     id: 'chaupal', 
     title: 'Chaupal', 
     color: 'linear-gradient(135deg, #FF512F 0%, #DD2476 100%)', 
-    icon: <img src={chaupalLogo} alt="Chaupal" className="w-16 h-16 object-contain rounded-xl" />
+    icon: <img src={chaupalLogo} alt="Chaupal" className="w-16 h-16 object-contain rounded-xl" />,
+    url: 'https://chaupal.tv',
+    type: 'web'
   },
 ];
 
@@ -148,6 +173,8 @@ export default function Home() {
                   color={app.color}
                   icon={app.icon}
                   wide={app.wide}
+                  url={app.url}
+                  appType={app.type}
                 />
               ))}
               

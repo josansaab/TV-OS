@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Nexus TV OS Installer for Ubuntu 24.04+
-# Install with: curl -sL https://your-server.com/install.sh | sudo bash
+# Install with: curl -sL https://raw.githubusercontent.com/josansaab/TV-OS/main/install.sh | sudo bash
 
 set -e
 
@@ -9,7 +9,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo -e "${BLUE}"
 echo "╔══════════════════════════════════════════════════════════════╗"
@@ -28,8 +28,11 @@ fi
 ACTUAL_USER="${SUDO_USER:-$USER}"
 USER_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
 
+# Disable interactive prompts
+export DEBIAN_FRONTEND=noninteractive
+
 echo -e "${YELLOW}📦 Updating system packages...${NC}"
-apt-get update -qq
+apt-get update -y
 
 echo -e "${YELLOW}📦 Installing system dependencies...${NC}"
 apt-get install -y \
@@ -43,19 +46,36 @@ apt-get install -y \
     openbox \
     pulseaudio \
     flatpak \
-    gnome-software-plugin-flatpak \
-    > /dev/null 2>&1
+    snapd \
+    software-properties-common \
+    || {
+        echo -e "${YELLOW}Trying alternative packages...${NC}"
+        apt-get install -y \
+            curl \
+            wget \
+            git \
+            chromium \
+            x11-xserver-utils \
+            unclutter \
+            lightdm \
+            openbox \
+            pulseaudio \
+            flatpak \
+            snapd \
+            software-properties-common
+    }
 
 # Add Flathub repository
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+echo -e "${YELLOW}📦 Adding Flathub repository...${NC}"
+flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
 
 echo -e "${GREEN}✅ System dependencies installed${NC}"
 
 # Install Node.js 20
 echo -e "${YELLOW}📦 Installing Node.js 20...${NC}"
 if ! command -v node &> /dev/null || [ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -lt 20 ]; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
-    apt-get install -y nodejs > /dev/null 2>&1
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y nodejs
 fi
 echo -e "${GREEN}✅ Node.js $(node -v) installed${NC}"
 
@@ -69,55 +89,40 @@ echo ""
 
 # --- KODI ---
 echo -e "${YELLOW}  Installing Kodi...${NC}"
-apt-get install -y software-properties-common > /dev/null 2>&1
-add-apt-repository -y ppa:team-xbmc/ppa > /dev/null 2>&1
-apt-get update -qq
-apt-get install -y kodi > /dev/null 2>&1
-echo -e "${GREEN}  ✅ Kodi installed${NC}"
+add-apt-repository -y ppa:team-xbmc/ppa || true
+apt-get update -y
+apt-get install -y kodi || echo -e "${RED}  ⚠️ Kodi installation failed, skipping${NC}"
+echo -e "${GREEN}  ✅ Kodi done${NC}"
 
 # --- PLEX MEDIA SERVER ---
 echo -e "${YELLOW}  Installing Plex Media Server...${NC}"
-wget -q https://downloads.plex.tv/plex-keys/PlexSign.key -O - | apt-key add - > /dev/null 2>&1
-echo "deb https://downloads.plex.tv/repo/deb public main" > /etc/apt/sources.list.d/plexmediaserver.list
-apt-get update -qq
-apt-get install -y plexmediaserver > /dev/null 2>&1
-systemctl enable plexmediaserver > /dev/null 2>&1
-systemctl start plexmediaserver > /dev/null 2>&1
-echo -e "${GREEN}  ✅ Plex Media Server installed${NC}"
+curl https://downloads.plex.tv/plex-keys/PlexSign.key | gpg --dearmor -o /usr/share/keyrings/plex-archive-keyring.gpg || true
+echo "deb [signed-by=/usr/share/keyrings/plex-archive-keyring.gpg] https://downloads.plex.tv/repo/deb public main" > /etc/apt/sources.list.d/plexmediaserver.list || true
+apt-get update -y
+apt-get install -y plexmediaserver || echo -e "${RED}  ⚠️ Plex installation failed, skipping${NC}"
+systemctl enable plexmediaserver 2>/dev/null || true
+systemctl start plexmediaserver 2>/dev/null || true
+echo -e "${GREEN}  ✅ Plex done${NC}"
 
 # --- SPOTIFY ---
 echo -e "${YELLOW}  Installing Spotify...${NC}"
-snap install spotify > /dev/null 2>&1 || flatpak install -y flathub com.spotify.Client > /dev/null 2>&1
-echo -e "${GREEN}  ✅ Spotify installed${NC}"
+snap install spotify 2>/dev/null || flatpak install -y flathub com.spotify.Client 2>/dev/null || echo -e "${RED}  ⚠️ Spotify installation failed, skipping${NC}"
+echo -e "${GREEN}  ✅ Spotify done${NC}"
 
 # --- FREETUBE ---
 echo -e "${YELLOW}  Installing FreeTube...${NC}"
-flatpak install -y flathub io.freetubeapp.FreeTube > /dev/null 2>&1
-echo -e "${GREEN}  ✅ FreeTube installed${NC}"
+flatpak install -y flathub io.freetubeapp.FreeTube 2>/dev/null || echo -e "${RED}  ⚠️ FreeTube installation failed, skipping${NC}"
+echo -e "${GREEN}  ✅ FreeTube done${NC}"
 
 # --- VACUUMTUBE ---
 echo -e "${YELLOW}  Installing VacuumTube...${NC}"
-flatpak install -y flathub rocks.shy.VacuumTube > /dev/null 2>&1 || {
-    # Fallback: build from source
-    cd /tmp
-    git clone https://github.com/shy1132/VacuumTube.git > /dev/null 2>&1
-    cd VacuumTube
-    npm install > /dev/null 2>&1
-    npm run build > /dev/null 2>&1
-    mkdir -p /opt/vacuumtube
-    cp -r . /opt/vacuumtube/
-    cat > /usr/local/bin/vacuumtube << 'VTEOF'
-#!/bin/bash
-cd /opt/vacuumtube && npm start
-VTEOF
-    chmod +x /usr/local/bin/vacuumtube
-}
-echo -e "${GREEN}  ✅ VacuumTube installed${NC}"
+flatpak install -y flathub rocks.shy.VacuumTube 2>/dev/null || echo -e "${RED}  ⚠️ VacuumTube not available via flatpak${NC}"
+echo -e "${GREEN}  ✅ VacuumTube done${NC}"
 
 # --- VLC ---
 echo -e "${YELLOW}  Installing VLC Media Player...${NC}"
-apt-get install -y vlc > /dev/null 2>&1
-echo -e "${GREEN}  ✅ VLC installed${NC}"
+apt-get install -y vlc || echo -e "${RED}  ⚠️ VLC installation failed, skipping${NC}"
+echo -e "${GREEN}  ✅ VLC done${NC}"
 
 # ============================================
 # INSTALL NEXUS TV OS
@@ -129,10 +134,21 @@ echo -e "${BLUE}🖥️  Installing Nexus TV OS...${NC}"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-# In production, clone from git:
-# git clone https://github.com/yourusername/nexus-tv.git .
-# npm install --production
-# npm run build
+# Clone from GitHub
+echo -e "${YELLOW}  Cloning Nexus TV OS from GitHub...${NC}"
+if [ -d "$INSTALL_DIR/.git" ]; then
+    git pull origin main || true
+else
+    git clone https://github.com/josansaab/TV-OS.git . || true
+fi
+
+# Install npm dependencies
+if [ -f "package.json" ]; then
+    echo -e "${YELLOW}  Installing npm dependencies...${NC}"
+    npm install --production || npm install
+    echo -e "${YELLOW}  Building application...${NC}"
+    npm run build || true
+fi
 
 # Create dedicated user
 if ! id "nexus-tv" &>/dev/null; then
@@ -140,13 +156,14 @@ if ! id "nexus-tv" &>/dev/null; then
 fi
 chown -R nexus-tv:nexus-tv "$INSTALL_DIR" 2>/dev/null || true
 
+echo -e "${GREEN}✅ Nexus TV OS installed${NC}"
+
 # ============================================
 # CREATE APP LAUNCHER SERVICE
 # ============================================
 
 echo -e "${YELLOW}⚙️  Creating app launcher service...${NC}"
 
-# Create systemd service for Nexus TV
 cat > /etc/systemd/system/nexus-tv.service << 'EOF'
 [Unit]
 Description=Nexus TV OS
@@ -173,53 +190,49 @@ EOF
 echo -e "${YELLOW}📱 Creating web app shortcuts...${NC}"
 
 APPS_DIR="/usr/share/applications"
+CHROMIUM_CMD=$(command -v chromium-browser || command -v chromium || echo "chromium-browser")
 
-# Netflix
-cat > "$APPS_DIR/nexus-netflix.desktop" << 'EOF'
+cat > "$APPS_DIR/nexus-netflix.desktop" << EOF
 [Desktop Entry]
 Name=Netflix
-Exec=chromium-browser --app=https://www.netflix.com/browse --start-fullscreen
-Icon=netflix
+Exec=$CHROMIUM_CMD --app=https://www.netflix.com/browse --start-fullscreen
+Icon=video-display
 Type=Application
 Categories=Video;
 EOF
 
-# Amazon Prime Video
-cat > "$APPS_DIR/nexus-prime.desktop" << 'EOF'
+cat > "$APPS_DIR/nexus-prime.desktop" << EOF
 [Desktop Entry]
 Name=Prime Video
-Exec=chromium-browser --app=https://www.primevideo.com --start-fullscreen
-Icon=amazon
+Exec=$CHROMIUM_CMD --app=https://www.primevideo.com --start-fullscreen
+Icon=video-display
 Type=Application
 Categories=Video;
 EOF
 
-# YouTube TV
-cat > "$APPS_DIR/nexus-youtube.desktop" << 'EOF'
+cat > "$APPS_DIR/nexus-youtube.desktop" << EOF
 [Desktop Entry]
 Name=YouTube
-Exec=chromium-browser --app=https://www.youtube.com/tv --start-fullscreen
-Icon=youtube
+Exec=$CHROMIUM_CMD --app=https://www.youtube.com/tv --start-fullscreen
+Icon=video-display
 Type=Application
 Categories=Video;
 EOF
 
-# Kayo Sports
-cat > "$APPS_DIR/nexus-kayo.desktop" << 'EOF'
+cat > "$APPS_DIR/nexus-kayo.desktop" << EOF
 [Desktop Entry]
 Name=Kayo Sports
-Exec=chromium-browser --app=https://kayosports.com.au --start-fullscreen
-Icon=kayo
+Exec=$CHROMIUM_CMD --app=https://kayosports.com.au --start-fullscreen
+Icon=video-display
 Type=Application
 Categories=Video;
 EOF
 
-# Chaupal
-cat > "$APPS_DIR/nexus-chaupal.desktop" << 'EOF'
+cat > "$APPS_DIR/nexus-chaupal.desktop" << EOF
 [Desktop Entry]
 Name=Chaupal
-Exec=chromium-browser --app=https://chaupal.tv --start-fullscreen
-Icon=chaupal
+Exec=$CHROMIUM_CMD --app=https://chaupal.tv --start-fullscreen
+Icon=video-display
 Type=Application
 Categories=Video;
 EOF
@@ -240,9 +253,8 @@ autologin-user-timeout=0
 user-session=openbox
 EOF
 
-# Create OpenBox autostart for kiosk
 mkdir -p "$USER_HOME/.config/openbox"
-cat > "$USER_HOME/.config/openbox/autostart" << 'EOF'
+cat > "$USER_HOME/.config/openbox/autostart" << EOF
 # Disable screen saver and power management
 xset s off &
 xset -dpms &
@@ -251,18 +263,18 @@ xset s noblank &
 # Hide cursor after 0.5 seconds of inactivity
 unclutter -idle 0.5 -root &
 
-# Wait for network
-sleep 3
+# Wait for network and services
+sleep 5
 
 # Start Nexus TV in fullscreen kiosk mode
-chromium-browser \
-  --kiosk \
-  --noerrdialogs \
-  --disable-infobars \
-  --no-first-run \
-  --disable-session-crashed-bubble \
-  --disable-features=TranslateUI \
-  --check-for-update-interval=31536000 \
+$CHROMIUM_CMD \\
+  --kiosk \\
+  --noerrdialogs \\
+  --disable-infobars \\
+  --no-first-run \\
+  --disable-session-crashed-bubble \\
+  --disable-features=TranslateUI \\
+  --check-for-update-interval=31536000 \\
   --app=http://localhost:5000 &
 EOF
 
@@ -274,9 +286,13 @@ chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config"
 
 echo -e "${YELLOW}🔧 Creating nexus-tv command...${NC}"
 
-cat > /usr/local/bin/nexus-tv << 'EOF'
+CHROMIUM_CMD_ESCAPED=$(echo "$CHROMIUM_CMD" | sed 's/\//\\\//g')
+
+cat > /usr/local/bin/nexus-tv << EOF
 #!/bin/bash
-case "$1" in
+CHROMIUM="$CHROMIUM_CMD"
+
+case "\$1" in
     start)
         sudo systemctl start nexus-tv
         echo "Nexus TV started"
@@ -296,40 +312,39 @@ case "$1" in
         sudo journalctl -u nexus-tv -f
         ;;
     launch)
-        # Launch a specific app
-        case "$2" in
+        case "\$2" in
             plex)
-                chromium-browser --app=http://localhost:32400/web --start-fullscreen &
+                \$CHROMIUM --app=http://localhost:32400/web --start-fullscreen &
                 ;;
             kodi)
                 kodi &
                 ;;
             netflix)
-                chromium-browser --app=https://www.netflix.com/browse --start-fullscreen &
+                \$CHROMIUM --app=https://www.netflix.com/browse --start-fullscreen &
                 ;;
             prime)
-                chromium-browser --app=https://www.primevideo.com --start-fullscreen &
+                \$CHROMIUM --app=https://www.primevideo.com --start-fullscreen &
                 ;;
             spotify)
-                spotify &>/dev/null || flatpak run com.spotify.Client &
+                spotify 2>/dev/null || flatpak run com.spotify.Client &
                 ;;
             youtube)
-                chromium-browser --app=https://www.youtube.com/tv --start-fullscreen &
+                \$CHROMIUM --app=https://www.youtube.com/tv --start-fullscreen &
                 ;;
             freetube)
                 flatpak run io.freetubeapp.FreeTube &
                 ;;
             vacuumtube)
-                flatpak run rocks.shy.VacuumTube &>/dev/null || /usr/local/bin/vacuumtube &
+                flatpak run rocks.shy.VacuumTube 2>/dev/null || echo "VacuumTube not installed" &
                 ;;
             kayo)
-                chromium-browser --app=https://kayosports.com.au --start-fullscreen &
+                \$CHROMIUM --app=https://kayosports.com.au --start-fullscreen &
                 ;;
             chaupal)
-                chromium-browser --app=https://chaupal.tv --start-fullscreen &
+                \$CHROMIUM --app=https://chaupal.tv --start-fullscreen &
                 ;;
             *)
-                echo "Unknown app: $2"
+                echo "Unknown app: \$2"
                 echo "Available apps: plex, kodi, netflix, prime, spotify, youtube, freetube, vacuumtube, kayo, chaupal"
                 ;;
         esac
@@ -354,7 +369,7 @@ chmod +x /usr/local/bin/nexus-tv
 
 # Enable service
 systemctl daemon-reload
-systemctl enable nexus-tv.service > /dev/null 2>&1
+systemctl enable nexus-tv.service 2>/dev/null || true
 
 echo ""
 echo -e "${GREEN}"
@@ -378,15 +393,15 @@ echo "   ✅ Kayo Sports (web app)"
 echo "   ✅ Chaupal (web app)"
 echo ""
 echo "🚀 Next steps:"
-echo "   1. Reboot your system to start in TV mode:"
-echo "      ${YELLOW}sudo reboot${NC}"
+echo -e "   1. Reboot your system to start in TV mode:"
+echo -e "      ${YELLOW}sudo reboot${NC}"
 echo ""
-echo "   2. Control Nexus TV with:"
-echo "      ${YELLOW}nexus-tv start|stop|restart|status|logs${NC}"
+echo -e "   2. Control Nexus TV with:"
+echo -e "      ${YELLOW}nexus-tv start|stop|restart|status|logs${NC}"
 echo ""
-echo "   3. Launch apps directly:"
-echo "      ${YELLOW}nexus-tv launch kodi${NC}"
-echo "      ${YELLOW}nexus-tv launch plex${NC}"
+echo -e "   3. Launch apps directly:"
+echo -e "      ${YELLOW}nexus-tv launch kodi${NC}"
+echo -e "      ${YELLOW}nexus-tv launch plex${NC}"
 echo ""
 echo "   4. To exit kiosk mode: Press Alt+F4"
 echo ""

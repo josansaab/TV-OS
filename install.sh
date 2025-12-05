@@ -55,7 +55,7 @@ apt-get install -y -qq \
     firefox \
     wmctrl \
     xdotool \
-    triggerhappy
+    python3-evdev
 
 log_ok "System dependencies installed"
 
@@ -522,58 +522,290 @@ CLOSEEOF
 
 chmod +x "$USER_HOME/.config/nexus-tv/close-app.sh"
 
-# Create a system-level close script that can be called by triggerhappy
+# Create a system-level close script
 cat > /usr/local/bin/nexus-tv-home << HOMESCRIPT
 #!/bin/bash
-# This runs as root from triggerhappy, so we need to run as the actual user
+# This runs as root, so we need to run as the actual user
 NEXUS_USER="$ACTUAL_USER"
 su - "\$NEXUS_USER" -c "DISPLAY=:0 $USER_HOME/.config/nexus-tv/close-app.sh" 2>/dev/null || $USER_HOME/.config/nexus-tv/close-app.sh
 HOMESCRIPT
 chmod +x /usr/local/bin/nexus-tv-home
 
-# Set up triggerhappy for hardware-level key capture (works with remotes!)
+# Set up Python evdev listener for hardware-level key capture
+# This grabs the input device BEFORE Chromium can, ensuring remote buttons work
 log_info "Configuring hardware key capture for remotes..."
 
-mkdir -p /etc/triggerhappy/triggers.d
+# Create the Python evdev listener script
+cat > /usr/local/bin/nexus-tv-input-listener << 'PYEOF'
+#!/usr/bin/env python3
+"""
+Nexus TV OS Input Listener
+Captures remote control buttons at the evdev level, bypassing Chromium's input grab.
+This runs as a system service. For remotes, it grabs the device. For keyboards, it
+listens passively and uses uinput to re-inject non-exit keys.
+"""
 
-# Create triggerhappy config for various remote/keyboard buttons
-cat > /etc/triggerhappy/triggers.d/nexus-tv.conf << 'THEOF'
-# Nexus TV OS - Return to TV interface triggers
-# These capture keys at the hardware/input level - works with any remote!
+import os
+import sys
+import time
+import subprocess
+import signal
+from pathlib import Path
 
-# Home button (common on remotes)
-KEY_HOMEPAGE    1       /usr/local/bin/nexus-tv-home
+try:
+    import evdev
+    from evdev import InputDevice, UInput, ecodes, list_devices
+except ImportError:
+    print("python3-evdev not installed, exiting")
+    sys.exit(1)
 
-# Back button (common on remotes)  
-KEY_BACK        1       /usr/local/bin/nexus-tv-home
+# Key codes that should trigger "go home" action
+HOME_KEYS = {
+    ecodes.KEY_HOMEPAGE,    # Home button on remotes
+    ecodes.KEY_HOME,        # Alternative home key
+    ecodes.KEY_BACK,        # Back button
+    ecodes.KEY_EXIT,        # Exit button
+    ecodes.KEY_MENU,        # Menu button
+    ecodes.KEY_F10,         # F10 on keyboard
+    ecodes.KEY_RED,         # Red button on media remotes
+    ecodes.KEY_STOP,        # Stop button
+    ecodes.KEY_CLOSE,       # Close key
+    ecodes.KEY_CANCEL,      # Cancel key
+}
 
-# Exit button (some remotes have this)
-KEY_EXIT        1       /usr/local/bin/nexus-tv-home
+# Debounce - prevent multiple triggers
+last_trigger = 0
+DEBOUNCE_SECONDS = 0.5
 
-# Menu button as alternative
-KEY_MENU        1       /usr/local/bin/nexus-tv-home
+# Virtual keyboards for re-injecting keys (one per grabbed device)
+uinput_devices = {}
 
-# F10 key (keyboard)
-KEY_F10         1       /usr/local/bin/nexus-tv-home
+def create_uinput_for_device(dev):
+    """Create a virtual input device that mirrors the grabbed device's capabilities"""
+    try:
+        ui = UInput.from_device(dev, name=f'nexus-tv-passthrough-{dev.name[:20]}')
+        print(f"Created virtual device for: {dev.name}")
+        return ui
+    except Exception as e:
+        print(f"Could not create uinput for {dev.name}: {e}")
+        return None
 
-# Red button on media remotes (commonly used for exit)
-KEY_RED         1       /usr/local/bin/nexus-tv-home
+def inject_event(uinput, event):
+    """Re-inject an event to the system via uinput"""
+    if uinput:
+        try:
+            uinput.write_event(event)
+            uinput.syn()
+        except Exception as e:
+            pass
 
-# Stop button on media remotes
-KEY_STOP        1       /usr/local/bin/nexus-tv-home
+def trigger_home():
+    """Call the nexus-tv-home script to close current app and return to TV"""
+    global last_trigger
+    now = time.time()
+    if now - last_trigger < DEBOUNCE_SECONDS:
+        return
+    last_trigger = now
+    
+    print(f"[{time.strftime('%H:%M:%S')}] HOME triggered - returning to TV interface")
+    try:
+        subprocess.Popen(['/usr/local/bin/nexus-tv-home'], 
+                        stdout=subprocess.DEVNULL, 
+                        stderr=subprocess.DEVNULL)
+    except Exception as e:
+        print(f"Error calling nexus-tv-home: {e}")
 
-# Close/Cancel
-KEY_CLOSE       1       /usr/local/bin/nexus-tv-home
-KEY_CANCEL      1       /usr/local/bin/nexus-tv-home
-THEOF
+def is_remote_device(dev):
+    """Check if device looks like a remote control (not a regular keyboard)"""
+    name = dev.name.lower()
+    # Keywords that suggest a remote/media controller
+    remote_keywords = ['remote', 'cec', 'ir', 'mce', 'rc', 'media', 'consumer', 'flirc']
+    # Keywords that suggest a regular keyboard
+    keyboard_keywords = ['keyboard', 'kbd']
+    
+    is_remote = any(kw in name for kw in remote_keywords)
+    is_keyboard = any(kw in name for kw in keyboard_keywords)
+    
+    # If it has CEC capabilities, it's a remote
+    caps = dev.capabilities()
+    if ecodes.EV_KEY in caps:
+        key_caps = caps[ecodes.EV_KEY]
+        # CEC remotes typically have media keys
+        has_media_keys = any(k in key_caps for k in [
+            ecodes.KEY_PLAYPAUSE, ecodes.KEY_PLAY, ecodes.KEY_PAUSE,
+            ecodes.KEY_RECORD, ecodes.KEY_REWIND, ecodes.KEY_FASTFORWARD,
+            ecodes.KEY_CHANNELUP, ecodes.KEY_CHANNELDOWN,
+            ecodes.KEY_RED, ecodes.KEY_GREEN, ecodes.KEY_YELLOW, ecodes.KEY_BLUE
+        ])
+        if has_media_keys:
+            is_remote = True
+    
+    return is_remote and not is_keyboard
 
-# Enable and start triggerhappy service
-systemctl enable triggerhappy 2>/dev/null || true
-systemctl restart triggerhappy 2>/dev/null || true
+def find_input_devices():
+    """Find all input devices that might be remotes or keyboards"""
+    devices = []
+    for path in list_devices():
+        try:
+            dev = InputDevice(path)
+            caps = dev.capabilities()
+            # Check if device has key events
+            if ecodes.EV_KEY in caps:
+                key_caps = caps[ecodes.EV_KEY]
+                # Check if any of our home keys are supported
+                has_home_keys = any(k in key_caps for k in HOME_KEYS)
+                # Also include devices with navigation keys (remotes)
+                has_nav_keys = any(k in key_caps for k in [
+                    ecodes.KEY_UP, ecodes.KEY_DOWN, ecodes.KEY_LEFT, ecodes.KEY_RIGHT,
+                    ecodes.KEY_ENTER, ecodes.KEY_OK, ecodes.KEY_SELECT
+                ])
+                if has_home_keys or has_nav_keys:
+                    is_remote = is_remote_device(dev)
+                    print(f"Found: {dev.name} ({dev.path}) - {'REMOTE' if is_remote else 'KEYBOARD'}")
+                    devices.append((dev, is_remote))
+        except Exception as e:
+            print(f"Error checking device {path}: {e}")
+    return devices
 
-# Also add udev rule to ensure triggerhappy can access input devices
+def main():
+    print("Nexus TV OS Input Listener starting...")
+    print(f"Listening for keys: HOME, BACK, EXIT, MENU, F10, RED, STOP")
+    
+    # Handle signals for clean shutdown
+    def signal_handler(sig, frame):
+        print("\nShutting down input listener...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    while True:
+        devices = find_input_devices()
+        
+        if not devices:
+            print("No suitable input devices found, waiting...")
+            time.sleep(5)
+            continue
+        
+        print(f"Monitoring {len(devices)} input device(s)")
+        
+        # Create a selector for multiple devices
+        try:
+            from selectors import DefaultSelector, EVENT_READ
+            selector = DefaultSelector()
+            
+            device_info = {}  # Track device state: {path: (is_grabbed, uinput)}
+            
+            for dev, is_remote in devices:
+                should_grab = is_remote  # Only grab remotes, not keyboards
+                uinput = None
+                is_grabbed = False
+                
+                if should_grab:
+                    try:
+                        # Create uinput BEFORE grabbing so we can passthrough events
+                        uinput = create_uinput_for_device(dev)
+                        dev.grab()
+                        print(f"Grabbed remote: {dev.name}")
+                        is_grabbed = True
+                    except Exception as e:
+                        print(f"Could not grab {dev.name}: {e}")
+                        if uinput:
+                            try:
+                                uinput.close()
+                            except:
+                                pass
+                            uinput = None
+                else:
+                    print(f"Listening to keyboard (no grab): {dev.name}")
+                
+                device_info[dev.path] = (is_grabbed, uinput)
+                selector.register(dev, EVENT_READ, data=(is_remote, is_grabbed, uinput))
+            
+            while True:
+                for key, mask in selector.select(timeout=1):
+                    device = key.fileobj
+                    is_remote, is_grabbed, uinput = key.data
+                    try:
+                        for event in device.read():
+                            # Check if this is a home/exit key press
+                            if event.type == ecodes.EV_KEY and event.code in HOME_KEYS and event.value == 1:
+                                key_name = ecodes.KEY.get(event.code, f"KEY_{event.code}")
+                                print(f"Detected: {key_name} from {device.name}")
+                                trigger_home()
+                            elif is_grabbed and uinput:
+                                # For grabbed devices, re-inject ALL events (passthrough)
+                                inject_event(uinput, event)
+                    except Exception as e:
+                        print(f"Error reading from {device.name}: {e}")
+                        try:
+                            selector.unregister(device)
+                        except:
+                            pass
+                        break
+                else:
+                    continue
+                break  # Re-enumerate devices
+                
+        except Exception as e:
+            print(f"Selector error: {e}")
+        
+        # Cleanup: release devices and close uinput
+        for dev, is_remote in devices:
+            try:
+                dev.ungrab()
+            except:
+                pass
+            try:
+                dev.close()
+            except:
+                pass
+        
+        for path, (is_grabbed, uinput) in device_info.items():
+            if uinput:
+                try:
+                    uinput.close()
+                except:
+                    pass
+        
+        time.sleep(2)
+
+if __name__ == '__main__':
+    main()
+PYEOF
+chmod +x /usr/local/bin/nexus-tv-input-listener
+
+# Create systemd service for the input listener (runs as root to access /dev/input)
+cat > /etc/systemd/system/nexus-tv-input.service << 'SVCEOF'
+[Unit]
+Description=Nexus TV OS Input Listener
+After=local-fs.target
+Before=display-manager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nexus-tv-input-listener
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+# Load uinput kernel module (needed for key re-injection)
+modprobe uinput 2>/dev/null || true
+echo "uinput" >> /etc/modules-load.d/nexus-tv.conf 2>/dev/null || true
+
+# Enable and start the input listener service
+systemctl daemon-reload
+systemctl enable nexus-tv-input.service 2>/dev/null || true
+systemctl restart nexus-tv-input.service 2>/dev/null || true
+
+# Add udev rule to ensure proper input device permissions
 cat > /etc/udev/rules.d/99-nexus-tv-input.rules << 'UDEVEOF'
-# Allow triggerhappy to access all input devices for remote control support
+# Allow Nexus TV input listener to access all input devices
 SUBSYSTEM=="input", GROUP="input", MODE="0660"
 KERNEL=="event*", GROUP="input", MODE="0660"
 UDEVEOF
@@ -587,7 +819,7 @@ udevadm trigger 2>/dev/null || true
 
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config/nexus-tv"
 
-log_ok "Hardware key capture configured (Home, Back, Menu, F10, Stop, or Red button to exit apps)"
+log_ok "Hardware key capture configured (Home, Back, Menu, F10, Stop, ESC, or Red button to exit apps)"
 
 # ============================================
 # CREATE CLI CONTROL COMMAND

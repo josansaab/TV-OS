@@ -7,74 +7,78 @@ import { InstallModal } from '@/components/tv/InstallModal';
 import { Download } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-import plexLogo from '@assets/stock_images/plex_media_server_lo_e18675d2.jpg';
-import netflixLogo from '@assets/stock_images/netflix_logo_icon_re_3b0e1652.jpg';
-import primeLogo from '@assets/stock_images/amazon_prime_video_l_a2a4296d.jpg';
-import spotifyLogo from '@assets/stock_images/spotify_music_logo_g_cbe94d1b.jpg';
-import youtubeLogo from '@assets/stock_images/youtube_logo_red_pla_0d8f38b0.jpg';
-import kodiLogo from '@assets/stock_images/kodi_media_center_lo_d53854ff.jpg';
+import plexLogo from '@assets/generated_images/plex_app_logo_icon.png';
+import netflixLogo from '@assets/generated_images/netflix_app_logo_icon.png';
+import primeLogo from '@assets/generated_images/prime_video_app_logo.png';
+import spotifyLogo from '@assets/generated_images/spotify_app_logo_icon.png';
+import youtubeLogo from '@assets/generated_images/youtube_app_logo_icon.png';
+import kodiLogo from '@assets/generated_images/kodi_media_center_logo.png';
+import kayoLogo from '@assets/generated_images/kayo_sports_app_logo.png';
+import freetubeLogo from '@assets/generated_images/freetube_app_logo_icon.png';
+import vacuumtubeLogo from '@assets/generated_images/vacuumtube_app_logo_icon.png';
+import chaupalLogo from '@assets/generated_images/chaupal_streaming_app_logo.png';
 
 const apps = [
   { 
     id: 'plex', 
     title: 'Plex', 
-    color: 'linear-gradient(135deg, #e5a00d 0%, #b57d08 100%)', 
-    icon: <img src={plexLogo} alt="Plex" className="w-16 h-16 object-contain" />, 
+    color: 'linear-gradient(135deg, #e5a00d 0%, #1a1a1a 100%)', 
+    icon: <img src={plexLogo} alt="Plex" className="w-20 h-20 object-contain rounded-xl" />, 
     wide: true 
   },
   { 
     id: 'netflix', 
     title: 'Netflix', 
-    color: 'linear-gradient(135deg, #E50914 0%, #B20710 100%)', 
-    icon: <img src={netflixLogo} alt="Netflix" className="w-16 h-16 object-contain" />
+    color: 'linear-gradient(135deg, #E50914 0%, #141414 100%)', 
+    icon: <img src={netflixLogo} alt="Netflix" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'prime', 
     title: 'Prime Video', 
-    color: 'linear-gradient(135deg, #00A8E1 0%, #0078A0 100%)', 
-    icon: <img src={primeLogo} alt="Prime Video" className="w-16 h-16 object-contain" />
+    color: 'linear-gradient(135deg, #00A8E1 0%, #232f3e 100%)', 
+    icon: <img src={primeLogo} alt="Prime Video" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'spotify', 
     title: 'Spotify', 
     color: 'linear-gradient(135deg, #1DB954 0%, #191414 100%)', 
-    icon: <img src={spotifyLogo} alt="Spotify" className="w-16 h-16 object-contain" />
+    icon: <img src={spotifyLogo} alt="Spotify" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'youtube', 
     title: 'YouTube', 
-    color: 'linear-gradient(135deg, #FF0000 0%, #CC0000 100%)', 
-    icon: <img src={youtubeLogo} alt="YouTube" className="w-20 h-20 object-contain" />
+    color: 'linear-gradient(135deg, #FF0000 0%, #282828 100%)', 
+    icon: <img src={youtubeLogo} alt="YouTube" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'kodi', 
     title: 'Kodi', 
-    color: 'linear-gradient(135deg, #17B2E7 0%, #0F8AB5 100%)', 
-    icon: <img src={kodiLogo} alt="Kodi" className="w-16 h-16 object-contain" />
+    color: 'linear-gradient(135deg, #17B2E7 0%, #0F2027 100%)', 
+    icon: <img src={kodiLogo} alt="Kodi" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'kayo', 
     title: 'Kayo Sports', 
-    color: 'linear-gradient(135deg, #00C365 0%, #008F4A 100%)', 
-    icon: <span className="text-4xl font-bold italic text-white">KAYO</span>
+    color: 'linear-gradient(135deg, #00C365 0%, #0a1f12 100%)', 
+    icon: <img src={kayoLogo} alt="Kayo Sports" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'freetube', 
     title: 'FreeTube', 
     color: 'linear-gradient(135deg, #364F6B 0%, #1E2A38 100%)', 
-    icon: <span className="text-3xl font-bold text-white">FT</span>
+    icon: <img src={freetubeLogo} alt="FreeTube" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'vaccum', 
     title: 'VacuumTube', 
-    color: 'linear-gradient(135deg, #6B364F 0%, #381E2A 100%)', 
-    icon: <span className="text-3xl font-bold text-pink-300">VT</span>
+    color: 'linear-gradient(135deg, #6B364F 0%, #1a0f14 100%)', 
+    icon: <img src={vacuumtubeLogo} alt="VacuumTube" className="w-16 h-16 object-contain rounded-xl" />
   },
   { 
     id: 'chaupal', 
     title: 'Chaupal', 
     color: 'linear-gradient(135deg, #FF512F 0%, #DD2476 100%)', 
-    icon: <span className="text-4xl font-bold text-white">चौपाल</span>
+    icon: <img src={chaupalLogo} alt="Chaupal" className="w-16 h-16 object-contain rounded-xl" />
   },
 ];
 

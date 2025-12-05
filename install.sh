@@ -560,18 +560,29 @@ except ImportError:
     sys.exit(1)
 
 # Key codes that should trigger "go home" action
+# Includes many variations since remotes report different codes
 HOME_KEYS = {
-    ecodes.KEY_HOMEPAGE,    # Home button on remotes
-    ecodes.KEY_HOME,        # Alternative home key
-    ecodes.KEY_BACK,        # Back button
-    ecodes.KEY_EXIT,        # Exit button
-    ecodes.KEY_MENU,        # Menu button
-    ecodes.KEY_F10,         # F10 on keyboard
-    ecodes.KEY_RED,         # Red button on media remotes
-    ecodes.KEY_STOP,        # Stop button
-    ecodes.KEY_CLOSE,       # Close key
-    ecodes.KEY_CANCEL,      # Cancel key
+    ecodes.KEY_HOMEPAGE,    # Home button on remotes (172)
+    ecodes.KEY_HOME,        # Alternative home key (102)
+    ecodes.KEY_BACK,        # Back button (158)
+    ecodes.KEY_EXIT,        # Exit button (174)
+    ecodes.KEY_MENU,        # Menu button (139)
+    ecodes.KEY_F10,         # F10 on keyboard (68)
+    ecodes.KEY_RED,         # Red button on media remotes (398)
+    ecodes.KEY_STOP,        # Stop button (128)
+    ecodes.KEY_CLOSE,       # Close key (206)
+    ecodes.KEY_CANCEL,      # Cancel key (223)
+    ecodes.KEY_ESC,         # Escape key (1)
+    ecodes.KEY_PROG1,       # Some remotes use PROG keys (148)
+    ecodes.KEY_PROG2,       # (149)
+    ecodes.KEY_INFO,        # Info button sometimes used as back (358)
+    ecodes.KEY_CONTEXT_MENU,# Context menu (438)
+    ecodes.KEY_LAST,        # Last/Previous button (405)
+    ecodes.KEY_PREVIOUS,    # Previous (412)
 }
+
+# Enable verbose logging of all key events for debugging
+VERBOSE_LOGGING = True
 
 # Debounce - prevent multiple triggers
 last_trigger = 0
@@ -706,10 +717,23 @@ def main():
                         # Create uinput BEFORE grabbing so we can passthrough events
                         uinput = create_uinput_for_device(dev)
                         dev.grab()
-                        print(f"Grabbed remote: {dev.name}")
+                        print(f"SUCCESS: Grabbed remote exclusively: {dev.name} ({dev.path})")
                         is_grabbed = True
+                    except OSError as e:
+                        if e.errno == 16:  # EBUSY
+                            print(f"FAILED: Device already grabbed by another process (EBUSY): {dev.name}")
+                            print(f"  -> This means Chromium or another app grabbed the device first!")
+                            print(f"  -> Try restarting nexus-tv-input.service BEFORE starting Chromium")
+                        else:
+                            print(f"FAILED: Could not grab {dev.name}: {e}")
+                        if uinput:
+                            try:
+                                uinput.close()
+                            except:
+                                pass
+                            uinput = None
                     except Exception as e:
-                        print(f"Could not grab {dev.name}: {e}")
+                        print(f"FAILED: Could not grab {dev.name}: {e}")
                         if uinput:
                             try:
                                 uinput.close()
@@ -717,7 +741,7 @@ def main():
                                 pass
                             uinput = None
                 else:
-                    print(f"Listening to keyboard (no grab): {dev.name}")
+                    print(f"PASSIVE: Listening to keyboard (no grab): {dev.name}")
                 
                 device_info[dev.path] = (is_grabbed, uinput)
                 selector.register(dev, EVENT_READ, data=(is_remote, is_grabbed, uinput))
@@ -728,10 +752,15 @@ def main():
                     is_remote, is_grabbed, uinput = key.data
                     try:
                         for event in device.read():
+                            # Verbose logging of all key events for debugging
+                            if VERBOSE_LOGGING and event.type == ecodes.EV_KEY and event.value == 1:
+                                key_name = ecodes.KEY.get(event.code, f"UNKNOWN_{event.code}")
+                                print(f"[KEY] code={event.code} name={key_name} from={device.name}")
+                            
                             # Check if this is a home/exit key press
                             if event.type == ecodes.EV_KEY and event.code in HOME_KEYS and event.value == 1:
                                 key_name = ecodes.KEY.get(event.code, f"KEY_{event.code}")
-                                print(f"Detected: {key_name} from {device.name}")
+                                print(f"*** HOME KEY DETECTED: {key_name} (code={event.code}) from {device.name} ***")
                                 trigger_home()
                             elif is_grabbed and uinput:
                                 # For grabbed devices, re-inject ALL events (passthrough)
@@ -776,17 +805,19 @@ PYEOF
 chmod +x /usr/local/bin/nexus-tv-input-listener
 
 # Create systemd service for the input listener (runs as root to access /dev/input)
+# CRITICAL: Must start BEFORE display-manager so we grab the remote BEFORE Chromium does
 cat > /etc/systemd/system/nexus-tv-input.service << 'SVCEOF'
 [Unit]
 Description=Nexus TV OS Input Listener
-After=local-fs.target
-Before=display-manager.service
+After=systemd-udevd.service local-fs.target
+Before=display-manager.service lightdm.service graphical.target
 
 [Service]
 Type=simple
+ExecStartPre=/sbin/modprobe uinput
 ExecStart=/usr/local/bin/nexus-tv-input-listener
 Restart=always
-RestartSec=3
+RestartSec=2
 StandardOutput=journal
 StandardError=journal
 

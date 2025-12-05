@@ -193,38 +193,49 @@ if [ -f "package.json" ]; then
     npm run build 2>/dev/null || true
 fi
 
-# Create dedicated user
-if ! id "nexus-tv" &>/dev/null; then
-    useradd -r -s /bin/false nexus-tv 2>/dev/null || true
-fi
-chown -R nexus-tv:nexus-tv "$INSTALL_DIR" 2>/dev/null || true
+# Give the actual user ownership of the install directory
+chown -R "$ACTUAL_USER:$ACTUAL_USER" "$INSTALL_DIR"
 
 log_ok "Nexus TV OS installed"
 
 # ============================================
-# CREATE APP LAUNCHER SERVICE
+# CREATE USER-LEVEL SERVICE (runs as logged-in user)
 # ============================================
 
-log_info "Creating app launcher service..."
+log_info "Creating user-level launcher service..."
 
-cat > /etc/systemd/system/nexus-tv.service << 'SERVICEEOF'
+# Create user systemd directory
+USER_SYSTEMD_DIR="$USER_HOME/.config/systemd/user"
+mkdir -p "$USER_SYSTEMD_DIR"
+
+# Create user-level service (runs as the user with display access)
+cat > "$USER_SYSTEMD_DIR/nexus-tv.service" << SERVICEEOF
 [Unit]
-Description=Nexus TV OS
-After=network.target graphical.target
+Description=Nexus TV OS Launcher
+After=graphical-session.target
 
 [Service]
 Type=simple
-User=root
 WorkingDirectory=/opt/nexus-tv
 Environment=NODE_ENV=production
-Environment=DISPLAY=:0
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=3
 
 [Install]
-WantedBy=graphical.target
+WantedBy=default.target
 SERVICEEOF
+
+chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config/systemd"
+
+# Enable linger so user services start at boot (before login)
+loginctl enable-linger "$ACTUAL_USER" 2>/dev/null || true
+
+# Enable the user service
+su - "$ACTUAL_USER" -c "systemctl --user daemon-reload" 2>/dev/null || true
+su - "$ACTUAL_USER" -c "systemctl --user enable nexus-tv.service" 2>/dev/null || true
+
+log_ok "User service created"
 
 # ============================================
 # CREATE DESKTOP ENTRIES FOR WEB APPS
@@ -404,11 +415,16 @@ xset s noblank 2>/dev/null || true
 # Hide cursor after inactivity
 unclutter -idle 0.5 -root 2>/dev/null &
 
-# Start the Nexus TV backend service
-sudo systemctl start nexus-tv 2>/dev/null &
+# Start the Nexus TV backend service (user-level service)
+systemctl --user start nexus-tv.service 2>/dev/null &
 
 # Wait for backend to be ready
-sleep 5
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    if curl -s http://localhost:5000 > /dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
 
 # Start browser in fullscreen kiosk mode
 $BROWSER_CMD \
@@ -434,13 +450,6 @@ OPENBOXEOF
 chmod +x "$USER_HOME/.config/openbox/autostart"
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config"
 
-# Allow the user to run systemctl commands without password
-echo "$ACTUAL_USER ALL=(ALL) NOPASSWD: /bin/systemctl start nexus-tv, /bin/systemctl stop nexus-tv, /bin/systemctl restart nexus-tv, /bin/systemctl status nexus-tv" > /etc/sudoers.d/nexus-tv
-chmod 440 /etc/sudoers.d/nexus-tv
-
-# Enable nexus-tv service to start on boot
-systemctl enable nexus-tv 2>/dev/null || true
-
 log_ok "Kiosk mode configured"
 
 # ============================================
@@ -455,51 +464,55 @@ BROWSER="$BROWSER_CMD"
 
 case "\$1" in
     start)
-        sudo systemctl start nexus-tv
+        systemctl --user start nexus-tv.service
         echo "Nexus TV started"
         ;;
     stop)
-        sudo systemctl stop nexus-tv
+        systemctl --user stop nexus-tv.service
         echo "Nexus TV stopped"
         ;;
     restart)
-        sudo systemctl restart nexus-tv
+        systemctl --user restart nexus-tv.service
         echo "Nexus TV restarted"
         ;;
     status)
-        sudo systemctl status nexus-tv
+        systemctl --user status nexus-tv.service
         ;;
     logs)
-        sudo journalctl -u nexus-tv -f
+        journalctl --user -u nexus-tv.service -f
+        ;;
+    kiosk)
+        # Start in kiosk mode
+        $USER_HOME/.config/nexus-tv/start-kiosk.sh
         ;;
     launch)
         case "\$2" in
             plex)
-                \$BROWSER --app=http://localhost:32400/web --start-fullscreen &
+                \$BROWSER --kiosk --app=http://localhost:32400/web &
                 ;;
             kodi)
                 kodi &
                 ;;
             netflix)
-                \$BROWSER --app=https://www.netflix.com/browse --start-fullscreen &
+                \$BROWSER --kiosk --app=https://www.netflix.com/browse &
                 ;;
             prime)
-                \$BROWSER --app=https://www.primevideo.com --start-fullscreen &
+                \$BROWSER --kiosk --app=https://www.primevideo.com &
                 ;;
             spotify)
-                spotify 2>/dev/null || flatpak run com.spotify.Client 2>/dev/null || \$BROWSER --app=https://open.spotify.com --start-fullscreen &
+                spotify 2>/dev/null || flatpak run com.spotify.Client 2>/dev/null || \$BROWSER --kiosk --app=https://open.spotify.com &
                 ;;
             youtube)
-                \$BROWSER --app=https://www.youtube.com/tv --start-fullscreen &
+                \$BROWSER --kiosk --app=https://www.youtube.com/tv &
                 ;;
             freetube)
                 flatpak run io.freetubeapp.FreeTube &
                 ;;
             kayo)
-                \$BROWSER --app=https://kayosports.com.au --start-fullscreen &
+                \$BROWSER --kiosk --app=https://kayosports.com.au &
                 ;;
             chaupal)
-                \$BROWSER --app=https://chaupal.tv --start-fullscreen &
+                \$BROWSER --kiosk --app=https://chaupal.tv &
                 ;;
             *)
                 echo "Unknown app: \$2"
@@ -510,7 +523,7 @@ case "\$1" in
     *)
         echo "Nexus TV OS Control"
         echo ""
-        echo "Usage: nexus-tv {start|stop|restart|status|logs|launch <app>}"
+        echo "Usage: nexus-tv {start|stop|restart|status|logs|kiosk|launch <app>}"
         echo ""
         echo "Commands:"
         echo "  start           - Start Nexus TV"
@@ -525,9 +538,14 @@ CLIEOF
 
 chmod +x /usr/local/bin/nexus-tv
 
-# Enable service
-systemctl daemon-reload
-systemctl enable nexus-tv.service 2>/dev/null || true
+# Clean up any legacy system-level service (from previous installs)
+log_info "Cleaning up legacy services..."
+systemctl stop nexus-tv.service 2>/dev/null || true
+systemctl disable nexus-tv.service 2>/dev/null || true
+rm -f /etc/systemd/system/nexus-tv.service 2>/dev/null || true
+systemctl daemon-reload 2>/dev/null || true
+
+log_ok "CLI tool created"
 
 echo ""
 echo "=============================================="
@@ -548,10 +566,14 @@ echo "  - Kayo Sports (web app)"
 echo "  - Chaupal (web app)"
 echo ""
 echo "Next steps:"
-echo "  1. Reboot: sudo reboot"
-echo "  2. Control: nexus-tv start|stop|restart|status|logs"
-echo "  3. Launch apps: nexus-tv launch kodi"
-echo "  4. Exit kiosk mode: Alt+F4"
+echo "  1. Log out and log back in (or reboot)"
+echo "  2. Start TV OS: nexus-tv start"
+echo "  3. Open kiosk mode: nexus-tv kiosk"
+echo "  4. Launch apps: nexus-tv launch kodi"
+echo "  5. Exit kiosk mode: Alt+F4"
+echo ""
+echo "The TV OS now runs as YOUR user, so it can launch"
+echo "native apps like Kodi directly from the interface!"
 echo ""
 echo "Enjoy your new TV OS!"
 echo ""

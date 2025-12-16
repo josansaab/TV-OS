@@ -447,7 +447,11 @@ chmod +x "$USER_HOME/.config/nexus-tv/start-kiosk.sh"
 mkdir -p "$USER_HOME/.config/openbox"
 cat > "$USER_HOME/.config/openbox/autostart" << OPENBOXEOF
 #!/bin/bash
+# Start the Nexus TV kiosk
 $USER_HOME/.config/nexus-tv/start-kiosk.sh &
+
+# Start the floating back button overlay (appears when apps are running)
+sleep 3 && /usr/local/bin/nexus-tv-back-button &
 OPENBOXEOF
 
 chmod +x "$USER_HOME/.config/openbox/autostart"
@@ -851,6 +855,172 @@ udevadm trigger 2>/dev/null || true
 chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config/nexus-tv"
 
 log_ok "Hardware key capture configured (Home, Back, Menu, F10, Stop, ESC, or Red button to exit apps)"
+
+# ============================================
+# CREATE FLOATING BACK BUTTON OVERLAY
+# ============================================
+
+log_info "Creating floating back button overlay..."
+
+# Install GTK dependencies for the overlay
+apt-get install -y -qq python3-gi python3-gi-cairo gir1.2-gtk-3.0 2>/dev/null || true
+
+# Create the floating back button script
+cat > /usr/local/bin/nexus-tv-back-button << 'BACKBTNEOF'
+#!/usr/bin/env python3
+"""
+Nexus TV OS - Floating Back Button
+A small overlay button that appears in the corner when apps are running.
+Click it to return to the TV interface.
+"""
+
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk, Gdk, GLib
+import subprocess
+import os
+import time
+import urllib.request
+import json
+
+class BackButton(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="")
+        
+        # Make window transparent and always on top
+        self.set_decorated(False)
+        self.set_keep_above(True)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
+        self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        
+        # Enable transparency
+        screen = self.get_screen()
+        visual = screen.get_rgba_visual()
+        if visual:
+            self.set_visual(visual)
+        self.set_app_paintable(True)
+        
+        # Create the back button
+        self.button = Gtk.Button()
+        self.button.set_size_request(60, 60)
+        self.button.connect("clicked", self.on_back_clicked)
+        
+        # Style the button
+        css = b'''
+        button {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid rgba(138, 43, 226, 0.8);
+            border-radius: 30px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            min-width: 60px;
+            min-height: 60px;
+        }
+        button:hover {
+            background: rgba(138, 43, 226, 0.9);
+            border-color: white;
+        }
+        '''
+        
+        style_provider = Gtk.CssProvider()
+        style_provider.load_from_data(css)
+        Gtk.StyleContext.add_provider_for_screen(
+            screen,
+            style_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        
+        # Add arrow icon
+        self.button.set_label("←")
+        
+        self.add(self.button)
+        
+        # Position in top-left corner with padding
+        self.move(20, 20)
+        
+        # Start hidden
+        self.hide()
+        
+        # Check for active app periodically
+        GLib.timeout_add(1000, self.check_active_app)
+    
+    def check_active_app(self):
+        """Check if an app is running and show/hide the button accordingly"""
+        try:
+            port = os.environ.get('NEXUS_PORT', '5000')
+            url = f"http://localhost:{port}/api/apps/active"
+            req = urllib.request.Request(url, method='GET')
+            req.add_header('Content-Type', 'application/json')
+            
+            with urllib.request.urlopen(req, timeout=1) as response:
+                data = json.loads(response.read().decode())
+                if data.get('active', False):
+                    self.show_all()
+                else:
+                    self.hide()
+        except Exception as e:
+            # If we can't connect, hide the button
+            self.hide()
+        
+        return True  # Continue the timeout
+    
+    def on_back_clicked(self, widget):
+        """Handle back button click"""
+        try:
+            # Call the close-app script
+            home = os.path.expanduser("~")
+            script = os.path.join(home, ".config/nexus-tv/close-app.sh")
+            if os.path.exists(script):
+                subprocess.Popen([script], env={**os.environ, 'DISPLAY': ':0'})
+            else:
+                # Fallback: call API directly
+                port = os.environ.get('NEXUS_PORT', '5000')
+                url = f"http://localhost:{port}/api/apps/close"
+                req = urllib.request.Request(url, method='POST')
+                req.add_header('Content-Type', 'application/json')
+                urllib.request.urlopen(req, timeout=2)
+        except Exception as e:
+            print(f"Error closing app: {e}")
+        
+        self.hide()
+
+def main():
+    # Set display
+    os.environ.setdefault('DISPLAY', ':0')
+    
+    win = BackButton()
+    win.connect("destroy", Gtk.main_quit)
+    
+    Gtk.main()
+
+if __name__ == '__main__':
+    main()
+BACKBTNEOF
+chmod +x /usr/local/bin/nexus-tv-back-button
+
+# Create autostart entry for the back button
+mkdir -p "$USER_HOME/.config/autostart"
+cat > "$USER_HOME/.config/autostart/nexus-tv-back-button.desktop" << AUTOBACKEOF
+[Desktop Entry]
+Type=Application
+Name=Nexus TV Back Button
+Exec=/usr/local/bin/nexus-tv-back-button
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+AUTOBACKEOF
+chown "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config/autostart/nexus-tv-back-button.desktop"
+
+# Also add to Openbox autostart
+if [ -f "$USER_HOME/.config/openbox/autostart" ]; then
+    if ! grep -q "nexus-tv-back-button" "$USER_HOME/.config/openbox/autostart"; then
+        echo "/usr/local/bin/nexus-tv-back-button &" >> "$USER_HOME/.config/openbox/autostart"
+    fi
+fi
+
+log_ok "Floating back button overlay created"
 
 # ============================================
 # CREATE CLI CONTROL COMMAND
